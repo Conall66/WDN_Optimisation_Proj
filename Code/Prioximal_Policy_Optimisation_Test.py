@@ -16,13 +16,17 @@ class WaterNetworkEnv(gym.Env):
 
         # Action space: choosing a node to expand & direction
         self.action_space = spaces.Discrete(len(self.graph.nodes) * 4)  # 4 directions per node
+
+        """
+        Discretised grid defines position of potential nodes and edges are drawn between
+        """
         
         # Observation space: adjacency matrix + node features (normalized positions)
         self.observation_space = spaces.Box(low=0, high=1, shape=(len(self.graph.nodes), 2), dtype=np.float32)
     
     def reset(self):
         self.graph = nx.Graph()
-        self.graph.add_node(0, pos=(0, 0))  # Source node
+        self.graph.add_node(0, pos=(0, 0))  # Source node (water supply)
         
         # Generate demand nodes
         self.demand_nodes = {
@@ -32,6 +36,10 @@ class WaterNetworkEnv(gym.Env):
         self.graph.add_nodes_from(self.demand_nodes.items())
         self.steps = 0
         return self._get_observation()
+    
+    """
+    Resets the environment to an initial state, required before calling step. Returns the first agent observation for an episode and information, i.e. metrics, debug info.
+    """
     
     def _get_observation(self):
         positions = nx.get_node_attributes(self.graph, 'pos')
@@ -62,15 +70,28 @@ class WaterNetworkEnv(gym.Env):
         # Reward: Minimize total pipe length while expanding
         total_length = sum(nx.get_edge_attributes(self.graph, 'weight').values())
         reward = -total_length / 100  # Penalize longer networks
+
+        """
+        Do we want to penalise longer pipes? We want to reward interconnectivity in areas of high demand and punish in areas of lower demand
+        Revision on features of reward function is needed!
+        """
         
         self.steps += 1
         done = self.steps >= self.max_steps
         
         return self._get_observation(), reward, done, {}
     
+    """
+    Updates an environment with actions returning the next agent observation, the reward for taking that actions, if the environment has terminated or truncated due to the latest action and information from the environment about the step, i.e. metrics, debug info.
+    """
+    
     def render(self):
         pos = nx.get_node_attributes(self.graph, 'pos')
-        nx.draw(self.graph, pos, with_labels=True, node_color='lightblue')
+        nx.draw(self.graph, pos, with_labels=True, node_color='lightblue') # Adds position of nodes from RL to graph
+
+    """
+    Renders the environments to help visualise what the agent see, examples modes are “human”, “rgb_array”, “ansi” for text.
+    """
 
 # Define a simple Policy Network
 class PolicyNetwork(nn.Module):
