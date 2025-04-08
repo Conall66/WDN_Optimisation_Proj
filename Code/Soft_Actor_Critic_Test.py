@@ -13,6 +13,8 @@ import torch.nn as nn
 import torch.optim as optim
 import random
 import matplotlib.pyplot as plt
+import math
+from collections import Counter
 
 # Independent Variables
 
@@ -27,22 +29,49 @@ quant_demand_nodes = [3, 5] # How many additional nodes to add with each iterati
 random_seed = 2
 random.seed(random_seed)
 
-# Initial Setup
+# Initial Setup ------------------------------------------------------------
+
+class WDN_env(gym.Env):
+    def __init__(
+            self,
+            learning_rate:float,
+            initial_epsilon:float,
+            epsilon_decay:float,
+            final_epsilon:float,
+            discount_factor:float = 0.95
+    )
+
 
 def optimised_wdn(Dimensions, nodes, edges, add_nodes, iterations):
     Initial_graph, initial_nodes, available_positions = generate_initial_wdn(Dimensions, nodes, edges)
     print("Initial available positions: ", len(available_positions))
-    Upd_graph, demand_nodes, available_positions = add_demand_nodes(Initial_graph, Dimensions, add_nodes, available_positions)
-    upd_nodes = initial_nodes + demand_nodes
-    plot_graph(Upd_graph, upd_nodes)
+    entropy = calc_Shannon_Entropy(Initial_graph)
+    print(f"Initial entropy value: {entropy:.4f}")
+
+    Current_graph = Initial_graph
+    Current_nodes = initial_nodes
+
+    for i in range(1, iterations+1):
+        Current_graph, demand_nodes, available_positions = add_demand_nodes(Current_graph, Dimensions, add_nodes, available_positions)
+        Current_nodes += demand_nodes
+        plot_graph(Current_graph, Current_nodes)
+        entropy = calc_Shannon_Entropy(Current_graph)
+        print(f"Iteration {i} entropy value: {entropy:.4f}")
+
+    return Current_graph, Current_nodes
+
+
+    # Upd_graph, demand_nodes, available_positions = add_demand_nodes(Initial_graph, Dimensions, add_nodes, available_positions)
+    # upd_nodes = initial_nodes + demand_nodes
+    # plot_graph(Upd_graph, upd_nodes)
 
 def add_demand_nodes(Graph, Dimensions, add_nodes, available_positions):
-    demand_nodes = random.sample(available_positions, random.randint(add_nodes)) # Problem because add nodes is a vector
+    demand_nodes = random.sample(available_positions, random.randint(add_nodes[0], add_nodes[1])) # Problem because add nodes is a vector
     available_positions = remove_used_positions(available_positions, demand_nodes)
     Graph.add_nodes_from(demand_nodes)
     return Graph, demand_nodes, available_positions
 
-def generate_initial_wdn(Dimensions, nodes, edges):
+def generate_initial_wdn(Dimensions, nodes, edges): # This initial network is arbitrary for now (in future represent an existing system)
     Graph = initialise_grid()
     # Randomly generate positions of nodes and connect to one another
     all_positions = total_positions(Dimensions)
@@ -73,6 +102,26 @@ def initialise_grid():
 
 # Reward function
 
+def calc_Shannon_Entropy(graph):
+
+    connected_nodes = [node for node, degree in graph.degree() if degree > 0]
+    subgraph = graph.subgraph(connected_nodes)
+
+    degrees = [degree for node, degree in subgraph.degree()] # extracts connectivity of each node
+    total_nodes = len(degrees)
+
+    if total_nodes == 0:
+        return 0
+    
+    degree_counts = Counter(degrees) # Counts occurences of each node degree
+    entropy = 0
+    
+    for count in degree_counts.values():
+        p_i = count / total_nodes
+        entropy -= p_i * math.log2(p_i)
+    
+    return entropy
+
 # Train
 
 # Test
@@ -86,6 +135,6 @@ def plot_graph(Graph, nodes):
     plt.grid(True)
     plt.show()
 
-# Run File
+# Run File --------------------------------------------------------------------------------
 
 optimised_wdn(graph_dimensions, initial_nodes, initial_edges, quant_demand_nodes, iterations)
