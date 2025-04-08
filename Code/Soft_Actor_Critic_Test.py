@@ -1,6 +1,9 @@
 
-# AI generated SAC RL Model
+"""
+Toy model intended to test the application of Soft Actor Critic (SAC) deep RL in designing optimised water distribution networks. For a simplistic 20x020 grid generate a set of nodes connected by an 'existing network' of branches to reflect an initial state, generate a set of demand nodes in each iteration and connect the existing system. Give the ability to disconnect branches with a penalty. Reward connectivity and punish increased pipe length.
+"""
 
+# Packages/Imports
 import numpy as np
 import networkx as nx
 import gym
@@ -9,109 +12,80 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import random
+import matplotlib.pyplot as plt
 
-# Define Water Network Environment
-class WaterNetworkEnv(gym.Env):
-    def __init__(self, num_demand_nodes=5, max_steps=50):
-        super(WaterNetworkEnv, self).__init__()
-        self.num_demand_nodes = num_demand_nodes
-        self.max_steps = max_steps
-        self.reset()
+# Independent Variables
 
-        # Continuous action space: [x_offset, y_offset]
-        self.action_space = spaces.Box(low=-3, high=3, shape=(2,), dtype=np.float32)
-        
-        # Observation space: positions of all nodes (flattened)
-        self.observation_space = spaces.Box(low=0, high=20, shape=(len(self.graph.nodes) * 2,), dtype=np.float32)
-    
-    def reset(self):
-        self.graph = nx.Graph()
-        self.graph.add_node(0, pos=(10, 10))  # Source node
-        
-        # Generate demand nodes
-        self.demand_nodes = {
-            i: (np.random.uniform(0, 20), np.random.uniform(0, 20)) 
-            for i in range(1, self.num_demand_nodes + 1)
-        }
-        self.graph.add_nodes_from(self.demand_nodes.items())
-        self.steps = 0
-        return self._get_observation()
-    
-    def _get_observation(self):
-        positions = nx.get_node_attributes(self.graph, 'pos')
-        return np.array(list(positions.values()), dtype=np.float32).flatten()
-    
-    def step(self, action):
-        node_id = random.choice(list(self.graph.nodes))
-        x, y = self.graph.nodes[node_id]['pos']
-        
-        new_pos = (x + action[0], y + action[1])
-        new_node_id = len(self.graph.nodes)
-        self.graph.add_node(new_node_id, pos=new_pos)
-        self.graph.add_edge(node_id, new_node_id, weight=np.linalg.norm(np.array(new_pos) - np.array([x, y])))
-        
-        # Reward: Minimize total pipe length
-        total_length = sum(nx.get_edge_attributes(self.graph, 'weight').values())
-        reward = -total_length / 100
-        
-        self.steps += 1
-        done = self.steps >= self.max_steps
-        
-        return self._get_observation(), reward, done, {}
-    
-    def render(self):
-        pos = nx.get_node_attributes(self.graph, 'pos')
-        nx.draw(self.graph, pos, with_labels=True, node_color='lightblue')
+iterations = 3
+graph_dimensions = (20, 20)
+initial_nodes = 6
+initial_edges = [initial_nodes - 1, initial_nodes + 4] # Range for potential num nodes
 
-# Define SAC Policy Network
-class PolicyNetwork(nn.Module):
-    def __init__(self, input_dim, output_dim):
-        super(PolicyNetwork, self).__init__()
-        self.fc = nn.Sequential(
-            nn.Linear(input_dim, 128),
-            nn.ReLU(),
-            nn.Linear(128, output_dim),
-            nn.Tanh()  # Ensures continuous values between -1 and 1
-        )
-    
-    def forward(self, x):
-        return self.fc(x)
+quant_demand_nodes = [3, 5] # How many additional nodes to add with each iteration
 
-# Training function (Simplified SAC)
-def train_sac(env, policy, optimizer, num_episodes=500):
-    for episode in range(num_episodes):
-        state = env.reset()
-        done = False
-        total_reward = 0
-        
-        while not done:
-            state_tensor = torch.FloatTensor(state).unsqueeze(0)
-            action = policy(state_tensor).detach().numpy().flatten()
-            action = action * 3  # Scale action for network expansion
-            
-            state, reward, done, _ = env.step(action)
-            total_reward += reward
-            
-            # Simplified SAC Loss (Using Policy Gradient)
-            loss = -reward
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-        
-        if episode % 50 == 0:
-            print(f"Episode {episode}, Total Reward: {total_reward}")
+# Random
+random_seed = 2
+random.seed(random_seed)
 
-# Initialize and train
-env = WaterNetworkEnv()
-policy = PolicyNetwork(env.observation_space.shape[0], env.action_space.shape[0])
-optimizer = optim.Adam(policy.parameters(), lr=0.01)
-train_sac(env, policy, optimizer, num_episodes=500)
+# Initial Setup
 
-# Test trained model
-env.reset()
-done = False
-while not done:
-    obs_tensor = torch.FloatTensor(env._get_observation()).unsqueeze(0)
-    action = policy(obs_tensor).detach().numpy().flatten() * 3
-    _, _, done, _ = env.step(action)
-    env.render()
+def optimised_wdn(Dimensions, nodes, edges, add_nodes, iterations):
+    Initial_graph, initial_nodes, available_positions = generate_initial_wdn(Dimensions, nodes, edges)
+    print("Initial available positions: ", len(available_positions))
+    Upd_graph, demand_nodes, available_positions = add_demand_nodes(Initial_graph, Dimensions, add_nodes, available_positions)
+    upd_nodes = initial_nodes + demand_nodes
+    plot_graph(Upd_graph, upd_nodes)
+
+def add_demand_nodes(Graph, Dimensions, add_nodes, available_positions):
+    demand_nodes = random.sample(available_positions, random.randint(add_nodes)) # Problem because add nodes is a vector
+    available_positions = remove_used_positions(available_positions, demand_nodes)
+    Graph.add_nodes_from(demand_nodes)
+    return Graph, demand_nodes, available_positions
+
+def generate_initial_wdn(Dimensions, nodes, edges):
+    Graph = initialise_grid()
+    # Randomly generate positions of nodes and connect to one another
+    all_positions = total_positions(Dimensions)
+    random_nodes = random.sample(all_positions, nodes)
+    Graph.add_nodes_from(random_nodes)
+    num_edges = random.randint(edges[0], edges[1])
+    possible_edges = list(nx.non_edges(Graph))
+    random_edges = random.sample(possible_edges, num_edges)
+    Graph.add_edges_from(random_edges)
+    available_positions = remove_used_positions(all_positions, random_nodes)
+    return Graph, random_nodes, available_positions
+
+# Identify the total list of available positions from the input dimensions
+def total_positions(Dimensions):
+    rows, cols = Dimensions
+    all_positions = [(i, j) for i in range(rows) for j in range(cols)]
+    return all_positions
+
+def remove_used_positions(positions, nodes):
+    positions = list(set(positions) - set(nodes))
+    return positions
+
+def initialise_grid():
+    G = nx.Graph()
+    return G
+
+# RL model parameters
+
+# Reward function
+
+# Train
+
+# Test
+
+# Graphics
+def plot_graph(Graph, nodes):
+    plt.figure(figsize=(6, 6))
+    pos = {node: (node[1], -node[0]) for node in nodes}
+    nx.draw(Graph, pos=pos, with_labels=True, node_color='skyblue', node_size=1000, font_size=6)
+    plt.title("Initial_graph")
+    plt.grid(True)
+    plt.show()
+
+# Run File
+
+optimised_wdn(graph_dimensions, initial_nodes, initial_edges, quant_demand_nodes, iterations)
