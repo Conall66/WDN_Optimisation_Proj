@@ -31,16 +31,7 @@ random.seed(random_seed)
 
 # Initial Setup ------------------------------------------------------------
 
-class WDN_env(gym.Env):
-    def __init__(
-            self,
-            learning_rate:float,
-            initial_epsilon:float,
-            epsilon_decay:float,
-            final_epsilon:float,
-            discount_factor:float = 0.95
-    )
-
+# Functional code
 
 def optimised_wdn(Dimensions, nodes, edges, add_nodes, iterations):
     Initial_graph, initial_nodes, available_positions = generate_initial_wdn(Dimensions, nodes, edges)
