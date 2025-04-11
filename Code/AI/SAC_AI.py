@@ -435,9 +435,15 @@ class WaterNetworkEnv:
                     dist = np.sqrt((pos1[0] - pos2[0])**2 + (pos1[1] - pos2[1])**2)
                     self.G.add_edge(node1, node2, length=dist, diameter=1.0)
         
-        # Reset connector nodes
-        self.connector_nodes = set()
-
+        # Add a fixed number of connector nodes (unconnected initially)
+        for i in range(3):  # Example: Add 3 connector nodes
+            connector_node = f"c{i}"
+            x = np.random.uniform(0, 10)
+            y = np.random.uniform(0, 10)
+            self.G.add_node(connector_node, pos=(x, y))
+            self.connector_nodes.add(connector_node)
+        
+        # Reset history
         self.history = {
             'rewards': [],
             'entropies': [],
@@ -605,6 +611,11 @@ def train_water_network_agent(env, num_episodes=1000, batch_size=256, max_steps=
     os.makedirs(output_dir, exist_ok=True)
     
     state_dim = len(env.get_state())
+    # state_dim = 23  # Example: [x, y, demand, node_type, entropy, cost, reliability]
+    # """Hard coded!"""
+
+    print("State Dimensions: ", state_dim)
+
     action_dim = 7  # Example: [action_type(3), x, y, node_idx, diameter, scale_factor]
     max_action = np.array([1.0, 1.0, 1.0, 10.0, 10.0, 2.0, 1.5])
     
@@ -618,6 +629,7 @@ def train_water_network_agent(env, num_episodes=1000, batch_size=256, max_steps=
     # Training loop
     for episode in range(num_episodes):
         state = env.reset()
+        print("State Dimensions Reset: ", len(state))
         episode_reward = 0
         
         for step in range(max_steps):
