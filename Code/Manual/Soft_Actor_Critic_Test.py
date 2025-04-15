@@ -31,8 +31,6 @@ random.seed(random_seed)
 
 # Initial Setup ------------------------------------------------------------
 
-# Functional code
-
 def optimised_wdn(Dimensions, nodes, edges, add_nodes, iterations):
     Initial_graph, initial_nodes, available_positions = generate_initial_wdn(Dimensions, nodes, edges)
     print("Initial available positions: ", len(available_positions))

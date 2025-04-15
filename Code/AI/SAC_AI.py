@@ -23,9 +23,10 @@ class Actor(nn.Module):
         self.l2 = nn.Linear(hidden_dim, hidden_dim)
         self.l3 = nn.Linear(hidden_dim, action_dim * 2)  # Mean and log_std
         
-        self.max_action = max_action
+        self.max_action = max_action # 
         
     def forward(self, state):
+        # print(f"State dtype actor: {state.dtype}")  # Debugging line
         a = F.relu(self.l1(state))
         a = F.relu(self.l2(a))
         mean_log_std = self.l3(a)
@@ -41,11 +42,16 @@ class Actor(nn.Module):
         normal = torch.distributions.Normal(mean, std)
         x_t = normal.rsample()  # Reparameterisation trick enables backprop
         action = torch.tanh(x_t)
+        # print(f"Action dtype sample: {action.dtype}")  # Debugging line
+        # print(f"Action * max_action dtype sample: {(action * self.max_action).dtype}")  # Debugging line
         
         # Calculate log probability
         log_prob = normal.log_prob(x_t)
         log_prob -= torch.log(1 - action.pow(2) + 1e-6)
         log_prob = log_prob.sum(1, keepdim=True)
+
+        # print("Action: ", action)  # action is a tensor
+        # print("Max action: ", self.max_action)  # Debugging line
         
         return action * self.max_action, log_prob
 
@@ -67,7 +73,12 @@ class Critic(nn.Module):
         self.l6 = nn.Linear(hidden_dim, 1)
         
     def forward(self, state, action):
+        # print(f"State dtype critic: {state.dtype}")  # Debugging line
+        # print(f"Action dtype critic: {action.dtype}")  # Debugging line
         sa = torch.cat([state, action], 1)
+        # print(f"sa dtype critic: {sa.dtype}")  # Debugging line
+
+        """This line is sometimes returning float64 instead of float32. This is causing the matrix multiplication error. This will occur because float 32 * float 64 returns float 64. The action input is float 64"""
         
         q1 = F.relu(self.l1(sa))
         q1 = F.relu(self.l2(q1))
@@ -85,7 +96,12 @@ class ReplayBuffer:
         self.buffer = deque(maxlen=capacity) # sets maximum number of trials to store in replay buffer at 1000000
     
     def add(self, state, action, reward, next_state, done):
-        self.buffer.append((state, action, reward, next_state, done))
+        self.buffer.append((
+            np.array(state, dtype=np.float32), 
+            np.array(action, dtype=np.float32), 
+            np.float32(reward), 
+            np.array(next_state, dtype=np.float32), 
+            done))
     
     def sample(self, batch_size):
         batch = random.sample(self.buffer, batch_size)
@@ -135,21 +151,30 @@ class SAC:
             self.alpha = alpha
     
     def select_action(self, state, evaluate=False):
-        with torch.no_grad():
+        with torch.no_grad(): # Disable gradient calculation for evaluation
             state = torch.FloatTensor(state).unsqueeze(0)
+            # print(f"State dtype select_action: {state.dtype}")  # Debugging line
             if evaluate:
                 mean, _ = self.actor(state)
                 return torch.tanh(mean) * self.max_action
             else:
                 action, _ = self.actor.sample(state)
-                return action.cpu().numpy().flatten()
+                # print(f"Action dtype select_action: {action.numpy().flatten().dtype}")  # Debugging line
+                # This should be an integer value
+
+                # action = action.cpu().detach().numpy().flatten()
+                # print(f"Requires gradient: {action.requires_grad}") # This should be false
+                # return action.numpy().flatten() # Flatten expands embeddings
+                return action
     
     def train(self, replay_buffer, batch_size=256):
         # Sample a batch from memory
         state, action, reward, next_state, done = replay_buffer.sample(batch_size)
         
         state = torch.FloatTensor(state)
+        # print(f"State dtype train: {state.dtype}")  # Debugging line
         action = torch.FloatTensor(action)
+        # print(f"Action dtype train: {action.dtype}")  # Debugging line
         reward = torch.FloatTensor(reward).unsqueeze(1)
         next_state = torch.FloatTensor(next_state)
         done = torch.FloatTensor(done).unsqueeze(1)
@@ -271,31 +296,34 @@ class WaterNetworkEnv:
         # Example: using average node connectivity
         return nx.average_node_connectivity(self.G)
 
-    def get_state(self):
-        # Convert relevant network properties to a state vector
-        # This is highly problem-specific and would need customization
-        
-        # Basic example:
+    def get_state(self, max_nodes=10):  # Set a maximum number of nodes to represent
         state = []
         
-        # Node features
-        for node in sorted(self.G.nodes()):
-            # Node position (if available)
-            pos = self.G.nodes[node].get('pos', (0, 0))
-            state.extend(pos)
-            
-            # Node demand (0 for connector nodes)
-            demand = self.node_demands.get(node, 0)
-            state.append(demand)
-            
-            # Node type (1 for demand, 0 for connector)
-            node_type = 1 if node in self.demand_nodes else 0
-            state.append(node_type)
+        # Global features first
+        entropy = self.calculate_entropy()
+        cost = self.calculate_cost()
+        reliability = self.calculate_reliability()
+        state.extend([entropy, cost, reliability])
         
-        # Global features
-        state.append(self.calculate_entropy())
-        state.append(self.calculate_cost())
-        state.append(self.calculate_reliability())
+        # Prioritize demand nodes
+        all_nodes = list(self.demand_nodes) + list(self.connector_nodes)
+
+        print(f"All nodes: {all_nodes}")  # Debugging line
+        
+        # Limit to max_nodes
+        for i in range(max_nodes):
+            if i < len(all_nodes):
+                node = all_nodes[i] # Extract which node fom all nodes in the dictionary
+                # print(f"pos: {self.G.nodes[node].get('pos', (0, 0))}")  # Debugging line
+                pos = self.G.nodes[node].get('pos', (0, 0)) # Returning error
+                demand = self.node_demands.get(node, 0)
+                node_type = 1 if node in self.demand_nodes else 0
+                
+                # Add node features
+                state.extend([pos[0], pos[1], demand, node_type])
+            else:
+                # Padding for missing nodes
+                state.extend([0, 0, 0, 0])
         
         return np.array(state, dtype=np.float32)
     
@@ -306,7 +334,7 @@ class WaterNetworkEnv:
             total_length += data.get('length', 1.0)
         return total_length
     
-    def step(self, action):
+    def step(self, action, max_nodes = 10):
         # Interpret and apply the action to modify the network
         # Actions could include:
         # 1. Add connector node
@@ -316,9 +344,14 @@ class WaterNetworkEnv:
         # 5. Modify pipe diameter
         
         # This is a simplified example - your actual implementation will be more complex
-        action_type = np.argmax(action[:3])  # First 3 elements determine action type
+        action_type = np.argmax(action[:3])  # Extract probabilstic best action
+
+        if action_type == 0 and len(self.G.nodes) >= max_nodes:
+            print("Max nodes reached")
+            action_type = 2 # Arbitrarily set best action then to altering the pipe diameters
         
         if action_type == 0:  # Add connector node
+        
             x, y = action[3:5]  # Node position
             new_node = f"c{len(self.connector_nodes)}"
             self.G.add_node(new_node, pos=(x, y))
@@ -456,9 +489,9 @@ class WaterNetworkEnv:
         
         return self.get_state()
     
-    def visualize_network(self, episode=None, save_path=None):
+    def visualise_network(self, episode=None, save_path=None):
         """
-        Visualize the current network topology with node types and pipe diameters
+        visualise the current network topology with node types and pipe diameters
         """
         plt.figure(figsize=(10, 8))
         
@@ -605,19 +638,28 @@ class WaterNetworkEnv:
 
 # Example usage
 def train_water_network_agent(env, num_episodes=1000, batch_size=256, max_steps=100, 
-                              visualize_interval=50, output_dir='results'):
+                              visualise_interval=50, output_dir='results'):
     
     # Create output directory
     os.makedirs(output_dir, exist_ok=True)
     
     state_dim = len(env.get_state())
     # state_dim = 23  # Example: [x, y, demand, node_type, entropy, cost, reliability]
-    # """Hard coded!"""
 
-    print("State Dimensions: ", state_dim)
 
-    action_dim = 7  # Example: [action_type(3), x, y, node_idx, diameter, scale_factor]
-    max_action = np.array([1.0, 1.0, 1.0, 10.0, 10.0, 2.0, 1.5])
+    """
+    Each node has 4 features: x, y, demand and node type. For a state dimenion of 23, there must be 5 nodes in the network, plus 3 global features (entropy, cost, reliability)
+    
+    As the number of nodes inceases, the state dimension increases by 4 for each node. A state dimension of 35 means another 3 nodes have been added to the network. This inconsistent dimensionality is causing the matrix multiplcation error. By hard coding the first layer of the actor and critic networks to 4*max_nodes, the network can be trained with any number of nodes. This is not ideal, but it works for now.
+
+    Alternatively use GNN to dynamically size training network (more computationally intense but less wasted memory)
+
+    """
+
+    # print("State Dimensions: ", state_dim)
+
+    action_dim = 7  # Example: [action_type(3), x, y, diameter, scale_factor]
+    max_action = np.array([1.0, 1.0, 1.0, 10.0, 10.0, 2.0, 1.5], dtype=np.float32) # This is the maximum action space for the agent. The first three values are the action type, which is a probability distribution over 3 actions. The next two values are the x and y coordinates of the new node, which can be between 0 and 10. The last two values are the diameter and scale factor of the pipe, which can be between 0.1 and 2.0.
     
     agent = SAC(state_dim, action_dim, max_action)
     replay_buffer = ReplayBuffer()
@@ -628,13 +670,14 @@ def train_water_network_agent(env, num_episodes=1000, batch_size=256, max_steps=
     
     # Training loop
     for episode in range(num_episodes):
-        state = env.reset()
-        print("State Dimensions Reset: ", len(state))
+        state = env.reset() # This function does not seem to be activated
+        # print("State Dimensions Reset: ", len(state))
         episode_reward = 0
         
         for step in range(max_steps):
             # Select action
             action = agent.select_action(state)
+            # print(f"Action dtype: {action.dtype}")  # Debugging line
             
             # Take action in environment
             next_state, reward, done, info = env.step(action)
@@ -676,11 +719,11 @@ def train_water_network_agent(env, num_episodes=1000, batch_size=256, max_steps=
         print(f"Total Pipe Length: {env.calculate_total_pipe_length():.2f}")
         print("-" * 50)
         
-        # Visualize at intervals and after final episode
-        if episode % visualize_interval == 0 or episode == num_episodes - 1:
+        # visualise at intervals and after final episode
+        if episode % visualise_interval == 0 or episode == num_episodes - 1:
             # Save network visualization
             network_path = os.path.join(output_dir, f"network_episode_{episode+1}.png")
-            env.visualize_network(episode=episode+1, save_path=network_path)
+            env.visualise_network(episode=episode+1, save_path=network_path)
             print(f"Network visualization saved to {network_path}")
             
             # Save learning curves
@@ -715,7 +758,7 @@ def train_water_network_agent(env, num_episodes=1000, batch_size=256, max_steps=
     
     # Display the final network
     print("\nDisplaying final network topology...")
-    env.visualize_network()
+    env.visualise_network()
     
     return agent, all_final_metrics
 
@@ -765,7 +808,7 @@ def main():
         num_episodes=200,
         batch_size=64,
         max_steps=100,
-        visualize_interval=20,
+        visualise_interval=50, # High interval value to speed up computation
         output_dir='water_network_results'
     )
     training_time = time.time() - start_time

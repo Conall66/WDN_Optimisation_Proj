@@ -40,7 +40,7 @@ class Actor(nn.Module):
         
         self.l1 = nn.Linear(state_dim, hidden_dim)
         self.l2 = nn.Linear(hidden_dim, hidden_dim)
-        self.l3 = nn.Linear(hidden_dim, action_dim * 2)  # Mean and log_std
+        self.l3 = nn.Linear(hidden_dim, action_dim * 2)  # Mean and log_std required to describe normal distribution)
         
         self.max_action = max_action
         
@@ -78,7 +78,7 @@ class Critic(nn.Module):
         # Q1 architecture
         self.l1 = nn.Linear(state_dim + action_dim, hidden_dim)
         self.l2 = nn.Linear(hidden_dim, hidden_dim)
-        self.l3 = nn.Linear(hidden_dim, 1)
+        self.l3 = nn.Linear(hidden_dim, 1) # Final output value is the Q value (expected utility of a state,action pair)
         
         # Q2 architecture (for stability)
         self.l4 = nn.Linear(state_dim + action_dim, hidden_dim)
