@@ -1,0 +1,819 @@
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+import numpy as np
+import networkx as nx
+from torch_geometric.nn import GCNConv, global_mean_pool
+from torch_geometric.data import Data, Batch
+from collections import deque
+import random
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+import gymnasium as gym
+from gymnasium import spaces
+
+class WaterNetworkEnvironment(gym.Env):
+    """
+    Environment for water distribution network optimization using a 3D grid.
+    """
+    def __init__(self, grid_size=(20, 20, 5), n_pipe_diameters=3, initial_budget=100, 
+                 budget_increase_rate=10, max_nodes=100, max_steps=1000):
+        super(WaterNetworkEnvironment, self).__init__()
+        
+        # Environment parameters
+        self.grid_size = grid_size
+        self.n_pipe_diameters = n_pipe_diameters
+        self.initial_budget = initial_budget
+        self.budget_increase_rate = budget_increase_rate
+        self.max_nodes = max_nodes
+        self.max_steps = max_steps
+        
+        # Pipe diameter options (in mm) and their costs
+        self.pipe_diameters = [100, 200, 300]  # Small, medium, large
+        self.pipe_costs = [10, 25, 50]  # Costs increase with diameter
+        
+        # Action space definition
+        # Action types: 0-Add node, 1-Connect nodes, 2-Upgrade pipe, 3-Disconnect, 4-Pass
+        self.action_space = spaces.Dict({
+            'action_type': spaces.Discrete(5),
+            'pos_x': spaces.Discrete(grid_size[0]),
+            'pos_y': spaces.Discrete(grid_size[1]),
+            'pos_z': spaces.Discrete(grid_size[2]),
+            'target_x': spaces.Discrete(grid_size[0]),
+            'target_y': spaces.Discrete(grid_size[1]),
+            'target_z': spaces.Discrete(grid_size[2]),
+            'diameter': spaces.Discrete(n_pipe_diameters)
+        })
+        
+        # Observation space
+        # Node features: position (x,y,z), node type (0-junction, 1-supply, 2-demand), pressure
+        # Edge features: start node, end node, diameter
+        # Global features: current budget, step count
+        node_features_dim = 5  # x, y, z, node_type, pressure
+        edge_features_dim = 1  # diameter index
+        global_features_dim = 2  # budget, step count
+        
+        self.observation_space = spaces.Dict({
+            'nodes': spaces.Box(low=-float('inf'), high=float('inf'), shape=(max_nodes, node_features_dim)),
+            'edges': spaces.Box(low=-float('inf'), high=float('inf'), shape=(max_nodes*2, 3)),  # source, target, diameter
+            'global_features': spaces.Box(low=-float('inf'), high=float('inf'), shape=(global_features_dim,)),
+            'adjacency': spaces.Box(low=0, high=1, shape=(max_nodes, max_nodes)),
+            'mask': spaces.Box(low=0, high=1, shape=(max_nodes,))  # Mask for valid nodes
+        })
+        
+        # Initialize environment state
+        self.reset()
+    
+    def reset(self, seed=None):
+        """Reset the environment to initial state."""
+        super().reset(seed=seed)
+        
+        # Initialize the network graph
+        self.G = nx.Graph()
+        
+        # Initialize budget and step counter
+        self.budget = self.initial_budget
+        self.step_count = 0
+        
+        # Create initial supply and demand nodes
+        self.create_initial_nodes()
+        
+        # Calculate initial pressures
+        self.update_pressures()
+        
+        # Get observation
+        observation = self._get_observation()
+        info = {}
+        
+        return observation, info
+    
+    def create_initial_nodes(self):
+        """Create initial supply and demand nodes."""
+        # Add a central supply node
+        center_x, center_y = self.grid_size[0] // 2, self.grid_size[1] // 2
+        self.G.add_node(0, pos=(center_x, center_y, 0), node_type=1, pressure=100.0)  # Supply node with high pressure
+        
+        # Add some demand nodes at random positions
+        n_demand_nodes = 5
+        for i in range(1, n_demand_nodes + 1):
+            x = random.randint(0, self.grid_size[0] - 1)
+            y = random.randint(0, self.grid_size[1] - 1)
+            z = random.randint(0, self.grid_size[2] - 1)
+            self.G.add_node(i, pos=(x, y, z), node_type=2, pressure=0.0)  # Demand node with initial zero pressure
+        
+        # Connect supply to one demand node to start
+        self.G.add_edge(0, 1, diameter=0)  # Smallest diameter pipe
+    
+    def update_pressures(self):
+        """
+        Simplified hydraulic model to update pressures in the network.
+        In a real implementation, this would use a hydraulic solver like EPANET.
+        """
+        # Simple BFS to propagate pressure from supply nodes with attenuation
+        visited = set()
+        queue = deque()
+        
+        # Start from supply nodes
+        for node, data in self.G.nodes(data=True):
+            if data['node_type'] == 1:  # Supply node
+                queue.append(node)
+                visited.add(node)
+        
+        while queue:
+            current = queue.popleft()
+            current_pressure = self.G.nodes[current]['pressure']
+            
+            for neighbor in self.G.neighbors(current):
+                if neighbor not in visited:
+                    # Pressure drops based on pipe diameter
+                    diameter_idx = self.G[current][neighbor]['diameter']
+                    pressure_drop = 30 / (diameter_idx + 1)  # Larger pipes have less pressure drop
+                    
+                    # Update neighbor pressure
+                    new_pressure = max(0, current_pressure - pressure_drop)
+                    self.G.nodes[neighbor]['pressure'] = new_pressure
+                    
+                    visited.add(neighbor)
+                    queue.append(neighbor)
+    
+    def step(self, action):
+        """
+        Execute an action and return the new state, reward and done flag.
+        """
+        self.step_count += 1
+        done = self.step_count >= self.max_steps
+        
+        action_type = action['action_type']
+        pos = (action['pos_x'], action['pos_y'], action['pos_z'])
+        target = (action['target_x'], action['target_y'], action['target_z'])
+        diameter = action['diameter']
+        
+        reward = 0
+        action_cost = 0
+        action_taken = False
+        
+        # Process the action
+        if action_type == 0:  # Add node
+            reward, action_cost, action_taken = self._add_node(pos)
+        elif action_type == 1:  # Connect nodes
+            reward, action_cost, action_taken = self._connect_nodes(pos, target, diameter)
+        elif action_type == 2:  # Upgrade pipe
+            reward, action_cost, action_taken = self._upgrade_pipe(pos, target, diameter)
+        elif action_type == 3:  # Disconnect nodes
+            reward, action_cost, action_taken = self._disconnect_nodes(pos, target)
+        elif action_type == 4:  # Pass
+            # No action, small penalty for waiting
+            reward = -1
+            action_taken = True
+        
+        # Update budget
+        self.budget -= action_cost
+        
+        # Add periodic budget increase
+        if self.step_count % 10 == 0:
+            self.budget += self.budget_increase_rate
+        
+        # Penalize for exceeding budget
+        if self.budget < 0:
+            reward -= abs(self.budget) * 10  # Severe penalty
+            done = True  # End episode if budget is exceeded
+        
+        # Update pressures after network changes
+        if action_taken and action_type != 4:
+            self.update_pressures()
+        
+        # Calculate connectivity reward
+        connectivity_reward = self._calculate_connectivity_reward()
+        reward += connectivity_reward
+        
+        # Get the new observation
+        observation = self._get_observation()
+        
+        # Additional info
+        info = {
+            'action_taken': action_taken,
+            'action_cost': action_cost,
+            'budget': self.budget,
+            'connectivity': connectivity_reward
+        }
+        
+        return observation, reward, done, False, info
+    
+    def _add_node(self, pos):
+        """Add a new node at the specified position if conditions allow."""
+        # Check if position is already occupied
+        for node, data in self.G.nodes(data=True):
+            if data['pos'] == pos:
+                return -5, 0, False  # Position already occupied, penalty
+        
+        # Check if we're exceeding max nodes
+        if len(self.G.nodes) >= self.max_nodes:
+            return -5, 0, False  # Too many nodes, penalty
+        
+        # Check if there are high-pressure nodes nearby
+        high_pressure_nearby = False
+        for node, data in self.G.nodes(data=True):
+            node_pos = data['pos']
+            dist = sum((p1 - p2) ** 2 for p1, p2 in zip(pos, node_pos)) ** 0.5
+            if dist < 3 and data['pressure'] > 70:  # Arbitrary threshold
+                high_pressure_nearby = True
+                break
+        
+        if not high_pressure_nearby:
+            return -10, 0, False  # No high pressure nearby, penalty
+        
+        # Add the node as a junction
+        node_id = max(self.G.nodes) + 1 if self.G.nodes else 0
+        self.G.add_node(node_id, pos=pos, node_type=0, pressure=0.0)
+        
+        # Cost and reward
+        action_cost = 20  # Base cost to add a node
+        reward = 5  # Base reward for adding a node
+        
+        return reward, action_cost, True
+    
+    def _connect_nodes(self, pos1, pos2, diameter):
+        """Connect two nodes with a pipe of specified diameter."""
+        # Find nodes at the given positions
+        node1 = None
+        node2 = None
+        
+        for node, data in self.G.nodes(data=True):
+            if data['pos'] == pos1:
+                node1 = node
+            if data['pos'] == pos2:
+                node2 = node
+        
+        # Check if both nodes exist
+        if node1 is None or node2 is None:
+            return -5, 0, False  # One or both nodes don't exist
+        
+        # Check if they're already connected
+        if self.G.has_edge(node1, node2):
+            return -5, 0, False  # Already connected
+        
+        # Check if nodes are close enough
+        pos1_data = self.G.nodes[node1]['pos']
+        pos2_data = self.G.nodes[node2]['pos']
+        dist = sum((p1 - p2) ** 2 for p1, p2 in zip(pos1_data, pos2_data)) ** 0.5
+        
+        if dist > 3:  # Maximum distance for direct connection
+            return -10, 0, False  # Too far apart
+        
+        # Connect the nodes
+        self.G.add_edge(node1, node2, diameter=diameter)
+        
+        # Calculate cost and reward
+        action_cost = self.pipe_costs[diameter] * dist
+        reward = 15  # Base reward for connecting nodes
+        
+        return reward, action_cost, True
+    
+    def _upgrade_pipe(self, pos1, pos2, new_diameter):
+        """Upgrade an existing pipe to a larger diameter."""
+        # Find nodes at the given positions
+        node1 = None
+        node2 = None
+        
+        for node, data in self.G.nodes(data=True):
+            if data['pos'] == pos1:
+                node1 = node
+            if data['pos'] == pos2:
+                node2 = node
+        
+        # Check if both nodes exist and are connected
+        if node1 is None or node2 is None or not self.G.has_edge(node1, node2):
+            return -5, 0, False  # Nodes don't exist or aren't connected
+        
+        # Check if the new diameter is larger than current
+        current_diameter = self.G[node1][node2]['diameter']
+        if new_diameter <= current_diameter:
+            return -5, 0, False  # Not an upgrade
+        
+        # Upgrade the pipe
+        self.G[node1][node2]['diameter'] = new_diameter
+        
+        # Calculate cost and reward
+        pos1_data = self.G.nodes[node1]['pos']
+        pos2_data = self.G.nodes[node2]['pos']
+        dist = sum((p1 - p2) ** 2 for p1, p2 in zip(pos1_data, pos2_data)) ** 0.5
+        
+        action_cost = (self.pipe_costs[new_diameter] - self.pipe_costs[current_diameter]) * dist
+        reward = 10  # Base reward for upgrading
+        
+        return reward, action_cost, True
+    
+    def _disconnect_nodes(self, pos1, pos2):
+        """Disconnect two nodes that are currently connected."""
+        # Find nodes at the given positions
+        node1 = None
+        node2 = None
+        
+        for node, data in self.G.nodes(data=True):
+            if data['pos'] == pos1:
+                node1 = node
+            if data['pos'] == pos2:
+                node2 = node
+        
+        # Check if both nodes exist and are connected
+        if node1 is None or node2 is None or not self.G.has_edge(node1, node2):
+            return -5, 0, False  # Nodes don't exist or aren't connected
+        
+        # Check if disconnecting would isolate parts of the network
+        if self._would_create_isolation(node1, node2):
+            return -20, 0, False  # Would create isolation, heavy penalty
+        
+        # Disconnect the nodes
+        self.G.remove_edge(node1, node2)
+        
+        # Cost and reward
+        action_cost = 5  # Small cost for disconnection
+        reward = -5  # Small penalty for removing connectivity
+        
+        return reward, action_cost, True
+    
+    def _would_create_isolation(self, node1, node2):
+        """Check if removing an edge would disconnect the network."""
+        # Temporarily remove the edge
+        self.G.remove_edge(node1, node2)
+        
+        # Find supply nodes
+        supply_nodes = [n for n, d in self.G.nodes(data=True) if d['node_type'] == 1]
+        
+        # Find demand nodes
+        demand_nodes = [n for n, d in self.G.nodes(data=True) if d['node_type'] == 2]
+        
+        # Check if all demand nodes are still connected to at least one supply node
+        connected_to_supply = set()
+        for supply in supply_nodes:
+            for component in nx.connected_components(self.G):
+                if supply in component:
+                    connected_to_supply.update(component)
+                    break
+        
+        # Add the edge back
+        self.G.add_edge(node1, node2, diameter=self.G[node1][node2]['diameter'])
+        
+        # Check if any demand node is not connected to supply
+        for demand in demand_nodes:
+            if demand not in connected_to_supply:
+                return True  # Would create isolation
+        
+        return False
+    
+    def _calculate_connectivity_reward(self):
+        """Calculate reward based on network connectivity."""
+        # Find supply and demand nodes
+        supply_nodes = [n for n, d in self.G.nodes(data=True) if d['node_type'] == 1]
+        demand_nodes = [n for n, d in self.G.nodes(data=True) if d['node_type'] == 2]
+        
+        # Calculate connectivity
+        connected_demand = 0
+        total_pressure = 0
+        
+        for demand in demand_nodes:
+            for supply in supply_nodes:
+                if nx.has_path(self.G, supply, demand):
+                    connected_demand += 1
+                    total_pressure += self.G.nodes[demand]['pressure']
+                    break
+        
+        # Reward based on number of connected demand nodes and their pressure
+        connectivity_score = connected_demand / max(1, len(demand_nodes))
+        pressure_score = total_pressure / max(1, len(demand_nodes) * 100)
+        
+        return 20 * connectivity_score + 10 * pressure_score
+    
+    def _get_observation(self):
+        """Create observation from current state."""
+        # Initialize arrays with padding for max_nodes
+        nodes = np.zeros((self.max_nodes, 5))  # x, y, z, node_type, pressure
+        edges = np.zeros((self.max_nodes * 2, 3))  # source, target, diameter
+        adjacency = np.zeros((self.max_nodes, self.max_nodes))
+        mask = np.zeros(self.max_nodes)
+        
+        # Fill node features
+        for i, (node, data) in enumerate(self.G.nodes(data=True)):
+            if i >= self.max_nodes:
+                break
+            
+            x, y, z = data['pos']
+            nodes[i] = [x, y, z, data['node_type'], data['pressure']]
+            mask[i] = 1  # Mark as valid node
+        
+        # Fill edge features
+        edge_idx = 0
+        for i, (u, v, data) in enumerate(self.G.edges(data=True)):
+            if edge_idx >= self.max_nodes * 2 - 1:
+                break
+            
+            # Add both directions for undirected graph
+            edges[edge_idx] = [u, v, data['diameter']]
+            adjacency[u][v] = 1
+            edge_idx += 1
+            
+            edges[edge_idx] = [v, u, data['diameter']]
+            adjacency[v][u] = 1
+            edge_idx += 1
+        
+        # Global features
+        global_features = np.array([self.budget, self.step_count])
+        
+        observation = {
+            'nodes': nodes,
+            'edges': edges,
+            'global_features': global_features,
+            'adjacency': adjacency,
+            'mask': mask
+        }
+        
+        return observation
+    
+    def render(self):
+        """Render the environment."""
+        fig = plt.figure(figsize=(12, 8))
+        ax = fig.add_subplot(111, projection='3d')
+        
+        # Plot nodes
+        for node, data in self.G.nodes(data=True):
+            x, y, z = data['pos']
+            node_type = data['node_type']
+            pressure = data['pressure']
+            
+            # Node color based on type
+            if node_type == 1:  # Supply
+                color = 'blue'
+                size = 100
+            elif node_type == 2:  # Demand
+                color = 'red'
+                size = 100
+            else:  # Junction
+                color = 'green'
+                size = 50
+            
+            # Node size based on pressure
+            size = size * (0.5 + pressure / 100)
+            
+            ax.scatter(x, y, z, c=color, s=size, alpha=0.7)
+            ax.text(x, y, z, f"{node}", fontsize=8)
+        
+        # Plot edges (pipes)
+        for u, v, data in self.G.edges(data=True):
+            x1, y1, z1 = self.G.nodes[u]['pos']
+            x2, y2, z2 = self.G.nodes[v]['pos']
+            diameter = data['diameter']
+            
+            # Edge width based on diameter
+            linewidth = 1 + diameter
+            
+            ax.plot([x1, x2], [y1, y2], [z1, z2], 'k-', linewidth=linewidth, alpha=0.5)
+        
+        # Set plot limits and labels
+        ax.set_xlim(0, self.grid_size[0])
+        ax.set_ylim(0, self.grid_size[1])
+        ax.set_zlim(0, self.grid_size[2])
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_zlabel('Z')
+        ax.set_title(f'Water Network - Budget: {self.budget}, Step: {self.step_count}')
+        
+        plt.tight_layout()
+        plt.show()
+
+class GNNPolicy(nn.Module):
+    """
+    Graph Neural Network policy for water distribution network optimization.
+    Uses Graph Convolutional Networks to process the network structure.
+    """
+    def __init__(self, node_feature_dim=5, edge_feature_dim=1, hidden_dim=64, n_actions=5):
+        super(GNNPolicy, self).__init__()
+        
+        # GNN layers
+        self.conv1 = GCNConv(node_feature_dim, hidden_dim)
+        self.conv2 = GCNConv(hidden_dim, hidden_dim)
+        self.conv3 = GCNConv(hidden_dim, hidden_dim)
+        
+        # Global state processing
+        self.global_fc = nn.Linear(2, hidden_dim)  # Process budget and step count
+        
+        # Action prediction layers
+        self.action_type = nn.Linear(hidden_dim * 2, n_actions)
+        self.pos_x = nn.Linear(hidden_dim * 2, 20)  # Grid size x
+        self.pos_y = nn.Linear(hidden_dim * 2, 20)  # Grid size y
+        self.pos_z = nn.Linear(hidden_dim * 2, 5)   # Grid size z
+        self.target_x = nn.Linear(hidden_dim * 2, 20)
+        self.target_y = nn.Linear(hidden_dim * 2, 20)
+        self.target_z = nn.Linear(hidden_dim * 2, 5)
+        self.diameter = nn.Linear(hidden_dim * 2, 3)  # 3 pipe diameters
+    
+    def forward(self, data):
+        """
+        Forward pass through the network.
+        Input: PyTorch Geometric Data object with node features, edge indices, etc.
+        Output: Action distributions
+        """
+        # Process node features with GNN
+        x = self.conv1(data.x, data.edge_index)
+        x = F.relu(x)
+        x = F.dropout(x, p=0.2, training=self.training)
+        
+        x = self.conv2(x, data.edge_index)
+        x = F.relu(x)
+        x = F.dropout(x, p=0.2, training=self.training)
+        
+        x = self.conv3(x, data.edge_index)
+        x = F.relu(x)
+        
+        # Global graph representation
+        graph_x = global_mean_pool(x, data.batch)
+        
+        # Process global features
+        global_features = self.global_fc(data.global_features)
+        global_features = F.relu(global_features)
+        
+        # Combine node and global features
+        combined = torch.cat([graph_x, global_features], dim=1)
+        
+        # Predict action distributions
+        action_type_logits = self.action_type(combined)
+        pos_x_logits = self.pos_x(combined)
+        pos_y_logits = self.pos_y(combined)
+        pos_z_logits = self.pos_z(combined)
+        target_x_logits = self.target_x(combined)
+        target_y_logits = self.target_y(combined)
+        target_z_logits = self.target_z(combined)
+        diameter_logits = self.diameter(combined)
+        
+        return {
+            'action_type': action_type_logits,
+            'pos_x': pos_x_logits,
+            'pos_y': pos_y_logits,
+            'pos_z': pos_z_logits,
+            'target_x': target_x_logits,
+            'target_y': target_y_logits,
+            'target_z': target_z_logits,
+            'diameter': diameter_logits
+        }
+
+class DQNAgent:
+    """
+    Deep Q-Network agent for water distribution network optimization.
+    Uses a GNN policy to predict Q-values for discrete actions.
+    """
+    def __init__(self, env, learning_rate=0.001, gamma=0.99, epsilon_start=1.0, 
+                 epsilon_end=0.1, epsilon_decay=0.995, memory_size=10000, 
+                 batch_size=32, target_update=100):
+        self.env = env
+        self.gamma = gamma
+        self.epsilon = epsilon_start
+        self.epsilon_end = epsilon_end
+        self.epsilon_decay = epsilon_decay
+        self.batch_size = batch_size
+        self.target_update = target_update
+        self.memory_size = memory_size
+        
+        # Define policy and target networks
+        self.policy_net = GNNPolicy()
+        self.target_net = GNNPolicy()
+        self.target_net.load_state_dict(self.policy_net.state_dict())
+        self.target_net.eval()
+        
+        # Define optimizer
+        self.optimizer = optim.Adam(self.policy_net.parameters(), lr=learning_rate)
+        
+        # Initialize replay memory
+        self.memory = deque(maxlen=memory_size)
+        
+        # Step counter for target network update
+        self.steps_done = 0
+    
+    def convert_obs_to_data(self, observation):
+        """Convert gym observation to PyTorch Geometric Data object."""
+        # Extract components from observation
+        nodes = torch.FloatTensor(observation['nodes'])
+        edges = torch.LongTensor(observation['edges'][:, :2].T)  # Source, target as edge index
+        edge_attr = torch.FloatTensor(observation['edges'][:, 2:])  # Diameter as edge attribute
+        global_features = torch.FloatTensor(observation['global_features'])
+        mask = torch.FloatTensor(observation['mask'])
+        
+        # Filter valid nodes and edges
+        valid_mask = mask > 0
+        valid_nodes = nodes[valid_mask]
+        
+        # Create edge index (only for valid edges)
+        valid_edge_mask = edges[0] < sum(valid_mask) 
+        valid_edges = edges[:, valid_edge_mask]
+        valid_edge_attr = edge_attr[valid_edge_mask]
+        
+        # Create PyG Data object
+        data = Data(
+            x=valid_nodes,
+            edge_index=valid_edges,
+            edge_attr=valid_edge_attr,
+            global_features=global_features,
+            batch=torch.zeros(len(valid_nodes), dtype=torch.long)
+        )
+        
+        return data
+    
+    def select_action(self, observation, testing=False):
+        """Select an action using epsilon-greedy policy."""
+        # Convert observation to PyG Data
+        data = self.convert_obs_to_data(observation)
+        
+        # Epsilon-greedy action selection
+        if random.random() > self.epsilon or testing:
+            with torch.no_grad():
+                self.policy_net.eval()
+                action_logits = self.policy_net(data)
+                self.policy_net.train()
+                
+                # Get highest probability actions
+                action_type = torch.argmax(action_logits['action_type']).item()
+                pos_x = torch.argmax(action_logits['pos_x']).item()
+                pos_y = torch.argmax(action_logits['pos_y']).item()
+                pos_z = torch.argmax(action_logits['pos_z']).item()
+                target_x = torch.argmax(action_logits['target_x']).item()
+                target_y = torch.argmax(action_logits['target_y']).item()
+                target_z = torch.argmax(action_logits['target_z']).item()
+                diameter = torch.argmax(action_logits['diameter']).item()
+        else:
+            # Random action
+            action_type = random.randint(0, 4)
+            pos_x = random.randint(0, self.env.grid_size[0] - 1)
+            pos_y = random.randint(0, self.env.grid_size[1] - 1)
+            pos_z = random.randint(0, self.env.grid_size[2] - 1)
+            target_x = random.randint(0, self.env.grid_size[0] - 1)
+            target_y = random.randint(0, self.env.grid_size[1] - 1)
+            target_z = random.randint(0, self.env.grid_size[2] - 1)
+            diameter = random.randint(0, self.env.n_pipe_diameters - 1)
+        
+        # Construct action dictionary
+        action = {
+            'action_type': action_type,
+            'pos_x': pos_x,
+            'pos_y': pos_y,
+            'pos_z': pos_z,
+            'target_x': target_x,
+            'target_y': target_y,
+            'target_z': target_z,
+            'diameter': diameter
+        }
+        
+        # Decay epsilon
+        if not testing and self.epsilon > self.epsilon_end:
+            self.epsilon *= self.epsilon_decay
+        
+        return action
+    
+    def store_transition(self, state, action, next_state, reward, done):
+        """Store transition in replay memory."""
+        self.memory.append((state, action, next_state, reward, done))
+    
+    def optimize_model(self):
+        """Perform one step of optimization on the DQN."""
+        if len(self.memory) < self.batch_size:
+            return 0  # Not enough samples
+        
+        # Sample from memory
+        transitions = random.sample(self.memory, self.batch_size)
+        batch = list(zip(*transitions))
+        
+        # Convert to PyG Data batch
+        state_batch = Batch.from_data_list([self.convert_obs_to_data(s) for s in batch[0]])
+        next_state_batch = Batch.from_data_list([self.convert_obs_to_data(s) for s in batch[2]])
+        
+        # Extract actions and rewards
+        action_batch = batch[1]
+        reward_batch = torch.FloatTensor([r for r in batch[3]])
+        done_batch = torch.FloatTensor([d for d in batch[4]])
+        
+        # Calculate Q values
+        q_values = self.policy_net(state_batch)
+        next_q_values = self.target_net(next_state_batch)
+        
+        # Initialize loss
+        loss = 0
+        
+        # Calculate loss for each action component
+        # For simplicity, we'll focus on the action_type component
+        action_type_q = torch.zeros(self.batch_size)
+        for i, action in enumerate(action_batch):
+            action_type_q[i] = q_values['action_type'][i, action['action_type']]
+        
+        # Get max Q value for next state
+        next_action_type_q = torch.max(next_q_values['action_type'], dim=1)[0]
+        
+        # Calculate target Q value
+        target_q = reward_batch + (1 - done_batch) * self.gamma * next_action_type_q
+        
+        # Calculate loss
+        criterion = nn.SmoothL1Loss()
+        loss = criterion(action_type_q, target_q)
+        
+        # Optimize
+        self.optimizer.zero_grad()
+        loss.backward()
+        # Clip gradients to avoid exploding gradients
+        for param in self.policy_net.parameters():
+            param.grad.data.clamp_(-1, 1)
+        self.optimizer.step()
+        
+        # Update target network if needed
+        self.steps_done += 1
+        if self.steps_done % self.target_update == 0:
+            self.target_net.load_state_dict(self.policy_net.state_dict())
+        
+        return loss.item()
+
+def train_agent(env, agent, num_episodes=1000, max_steps=500):
+    """Train the agent on the environment."""
+    rewards_history = []
+    
+    for episode in range(num_episodes):
+        # Reset environment
+        state, _ = env.reset()
+        episode_reward = 0
+        
+        for step in range(max_steps):
+            # Select and perform action
+            action = agent.select_action(state)
+            next_state, reward, done, _, info = env.step(action)
+            
+            # Store transition
+            agent.store_transition(state, action, next_state, reward, done)
+            
+            # Optimize model
+            loss = agent.optimize_model()
+            
+            # Update state and reward
+            state = next_state
+            episode_reward += reward
+            
+            if done:
+                break
+        
+        # Log progress
+        rewards_history.append(episode_reward)
+        if episode % 10 == 0:
+            print(f"Episode {episode}, Reward: {episode_reward}, Epsilon: {agent.epsilon:.2f}")
+            # Render every 100 episodes
+            if episode % 100 == 0:
+                env.render()
+    
+    return rewards_history
+
+def evaluate_agent(env, agent, num_episodes=10):
+    """Evaluate the trained agent."""
+    eval_rewards = []
+    
+    for episode in range(num_episodes):
+        state, _ = env.reset()
+        episode_reward = 0
+        done = False
+        
+        while not done:
+            action = agent.select_action(state, testing=True)
+            next_state, reward, done, _, _ = env.step(action)
+            state = next_state
+            episode_reward += reward
+        
+        eval_rewards.append(episode_reward)
+        print(f"Eval Episode {episode}, Reward: {episode_reward}")
+        # Render final network
+        env.render()
+    
+    return eval_rewards
+
+def main():
+    """Main function to run the training and evaluation."""
+    # Create environment
+    env = WaterNetworkEnvironment()
+    
+    # Create agent
+    agent = DQNAgent(env)
+    
+    # Train agent
+    print("Training agent...")
+    train_rewards = train_agent(env, agent, num_episodes=500)
+    
+    # Plot training rewards
+    plt.figure(figsize=(10, 6))
+    plt.plot(train_rewards)
+    plt.title('Training Rewards')
+    plt.xlabel('Episode')
+    plt.ylabel('Reward')
+    plt.grid(True)
+    plt.savefig('training_rewards.png')
+    plt.show()
+    
+    # Evaluate agent
+    print("Evaluating agent...")
+    eval_rewards = evaluate_agent(env, agent)
+    
+    print(f"Average evaluation reward: {sum(eval_rewards) / len(eval_rewards)}")
+    
+if __name__ == "__main__":
+    main()
