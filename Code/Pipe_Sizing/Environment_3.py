@@ -141,7 +141,7 @@ def generate_branched_network(num_nodes=15, branching_factor=0.3, scale=100):
         parent_pos = G.nodes[parent]['pos']
         
         # Number of children for this node
-        num_children = random.randint(1, 3) if random.random() < branching_factor else 1
+        num_children = random.randint(1, 3) if random.random() < branching_factor else 1 # Possibility each node can connect to more than one other node
         num_children = min(num_children, num_nodes - next_node_id)
         
         for _ in range(num_children):
@@ -258,7 +258,19 @@ def assign_network_properties(G, network_type='medium', age_condition='normal', 
         # Remove demand from tank
         if 'demand' in network.nodes[tank_node]:
             del network.nodes[tank_node]['demand']
-    
+
+    # Ensure all nodes are connected
+    if not nx.is_connected(network):
+        components = list(nx.connected_components(network))
+        for i in range(len(components) - 1):
+            # Connect a node from one component to a node in the next component
+            node1 = random.choice(list(components[i]))
+            node2 = random.choice(list(components[i + 1]))
+            pos1 = network.nodes[node1]['pos']
+            pos2 = network.nodes[node2]['pos']
+            distance = np.sqrt((pos1[0] - pos2[0])**2 + (pos1[1] - pos2[1])**2)
+            network.add_edge(node1, node2, length=distance, diameter=random.choice(PIPE_DIAMETERS[network_type]))
+
     # Assign pipe properties
     for u, v in network.edges:
         # Select appropriate diameter based on network type
@@ -327,7 +339,7 @@ def visualize_network(G, filename=None):
         plt.savefig(filename)
     plt.show()
 
-def convert_to_epanet(G, filename):
+def convert_to_epanet(G, filename): # Takes network and .inp file as inputs
     """
     Convert NetworkX graph to EPANET input file.
     
@@ -339,44 +351,89 @@ def convert_to_epanet(G, filename):
         str: Path to the created EPANET file
     """
 
-    d = epanet(filename)
-    d.setTitle("Generated Water Distribution Network")
-    d.setFlowUnitsLPS(1)  # L/s
-    d.setOptionsHeadLossFormula(1)  # Hazen-Williams
-    d.setOptionsSpecificGravity(1.0)  # Water
-    d.setOptionsSpecificViscosity(1.0)  # Water
-    # Set time step so simulation runs for 24 hours
+    d = epanet() # Create an EPANET object
+
+    G = nx.relabel_nodes(G, lambda x: str(x)) # Ensure all nodes are strings
+    print(G.nodes)
 
     # Add nodes (junctions and tanks)
     for node in G.nodes:
+
+        print(f"Node Type: {G.nodes[node].get('type')}")
+        print(f"Node: {node}")
+        print(G.nodes[node])
+        print(f"Node Position: {[G.nodes[node]['pos'][0], G.nodes[node]['pos'][1]]}")
+
         node_type = G.nodes[node].get('type', 'junction')
+        # Node_id = "Node_" + str(node)
+        node_id = node
+
         if node_type == 'reservoir':
-            d.addNodeReservoir(node, G.nodes[node]['head'], G.nodes[node]['elevation'])
+            head = float(G.nodes[node]['head']) # Total head (m)
+            elev = float(G.nodes[node]['elevation'])
+            position = [G.nodes[node]['pos'][0], G.nodes[node]['pos'][1]]
+            d.addNodeReservoir(node_id, position) # Assumed that reservoir has elevation of 0
+
+            print(f"D Nodes Size: {d.getNodeCount()}")
+
         elif node_type == 'tank':
-            d.addNodeTank(node, G.nodes[node]['diameter'], G.nodes[node]['min_level'],
-                      G.nodes[node]['max_level'], G.nodes[node]['initial_level'],
-                      G.nodes[node]['elevation'])
+            diameter = float(G.nodes[node]['diameter'])
+            min_level = float(G.nodes[node]['min_level'])
+            max_level = float(G.nodes[node]['max_level'])
+            initial_level = float(G.nodes[node]['initial_level'])
+            elevation = float(G.nodes[node]['elevation'])
+            position = [G.nodes[node]['pos'][0], G.nodes[node]['pos'][1]]
+            d.addNodeTank(node_id, position, elevation) # Add initial, min and max levels and diameter etc
+            # d.setNodeCoordinates(node_id, position)
+
+            print(f"D Nodes Size: {d.getNodeCount()}")
+
         else:  # junction
-            demand = G.nodes[node].get('demand', 0)
-            d.addNodeJunction(node, demand, G.nodes[node]['elevation'])
+            # Add junction
+            elev = float(G.nodes[node].get('elevation', 0))
+            demand = float(G.nodes[node].get('demand', 0))
+            
+            d.addNodeJunction(node)
+            d.setNodeCoordinates(node, [G.nodes[node]['pos'][0], G.nodes[node]['pos'][1]])
+            d.setNodeElevations(node, elev)
+            d.setNodeBaseDemands(node, demand)
+            
+            # Add demand pattern if available
+            # if G.nodes[node].get('pattern'):
+            #     pattern_type = G.nodes[node]['pattern']
+            #     if pattern_type in DEMAND_PATTERNS:
+            #         pattern_id = f"Pattern_{node}"
+            #         d.addPattern(pattern_id, DEMAND_PATTERNS[pattern_type])
+            #         d.setNodeDemandPatternIndex(node, pattern_id)
+
+    # Verify nodes were added
+    print(f"Network has {len(G.nodes)} nodes")
+    print(f"EPANET model has {d.getNodeCount()} nodes")
 
     # Add pipes
-    for u, v in G.edges:
+    for u, v in G.edges: # Extracts positions 1, 2 for edge connections
+        print(f"Pipe: {u} to {v}")
+        pipe_id = f"{u}_{v}"
         diameter = G.edges[u, v].get('diameter', 100) / 1000  # Convert mm to m
         roughness = G.edges[u, v].get('roughness', 100)
         length = G.edges[u, v].get('length', 100)  # meters
-        d.addLinkPipe(u, v, length, diameter, roughness)
-
-    # Add patterns for junctions
-    for node in G.nodes:
-        if G.nodes[node].get('pattern'):
-            pattern = G.nodes[node]['pattern']
-            if pattern in DEMAND_PATTERNS:
-                d.addPattern(node, DEMAND_PATTERNS[pattern])
+        d.addLinkPipe(pipe_id, u, v, length, diameter, roughness)
 
 
-    # Save the EPANET input file
-    d.saveInputFile(filename)
+    d.setTitle("Generated Water Distribution Network")
+    d.setTimeHydraulicStep(1800)  # 30-minute hydraulic time step
+    d.setTimePatternStep(3600)    # 1-hour pattern time step
+    d.setTimePatternStart(0)
+    d.setTimeReportingStep(3600)  # 1-hour reporting time step
+    d.setTimeReportingStart(0)
+    d.setTimeSimulationDuration(86400)  # 24-hour simulation
+
+    # Display information held by object d
+    d_nodes = d.getNodeCount()
+    print(f"D Nodes: {d_nodes}")
+    
+    # Save the input file
+    d.saveInputFile(filename) # Saves the EPANET to input file name
 
     return filename
 
@@ -558,10 +615,14 @@ def analyse_water_network(G, output_dir="./output"):
     
     # Visualize the network
     vis_file = os.path.join(output_dir, f"{network_id}_network.png")
+    # Save visualization
+
     visualize_network(G, filename=vis_file)
     
     # Convert to EPANET
-    inp_file = os.path.join(output_dir, f"{network_id}.inp") # Create a new empty EPANET file and pass to the function
+    inp_file = os.path.join(output_dir, f"{network_id}.inp") # New EPANET file pathway
+    # Save inp file
+    print(f"EPANET input file: {inp_file}")
     epanet_file = convert_to_epanet(G, inp_file)
     
     # Run simulation
