@@ -69,10 +69,9 @@ def generate_branched_network(
     # Generate a random lobster network
     graph = nx.random_lobster(num_nodes, 0.5, 0.2) # In this function, the number of nodes determines how many junctions are along the backbone rather than in the network as a total
 
-     # Generate layout for the graph using spring layout.
+    # Generate layout for the graph using spring layout.
     # spring_layout by default positions nodes in a [0,1] x [0,1] area.
-    # Using a seed ensures reproducible layouts.
-    pos = nx.spring_layout(graph, seed=1) 
+    pos = nx.spring_layout(graph, seed = 1) 
 
     # Scale coordinates to fit within the specified area_size.
     # This assumes area_size defines a square region [0, area_size] x [0, area_size].
@@ -86,6 +85,7 @@ def generate_branched_network(
         
         # Assign the scaled coordinates to the node
         graph.nodes[node_key]['coordinates'] = (scaled_x, scaled_y)
+        graph.nodes[node_key]['id'] = f"J{node_key}" # Assign a unique ID to each node
 
     # Assign the largest diameter to the backbone, and randomly assign diameters to the other pipes
     # Find the pipe with the largest diameter
@@ -158,11 +158,7 @@ def generate_branched_network(
     print (f"Max commercial demand (L/s): {max(commerical_demand['Demand'])}")
 
     # Generate an elevation map
-    elevation_map, peaks = generate_elevation_map(area_size=area_size, elevation_range=elevation_range, num_nodes=num_nodes, num_peaks=10, landscape_type=landscape_type)
-
-    # For nodes in the graph, assign node type, an ID, elevation, base demand, minimum pressure and coordiates
-    # Generate elevation map and peaks
-    elevation_map, peaks, grid_size = generate_elevation_map(graph, elevation_range=elevation_range, num_nodes=len(graph.nodes()), num_peaks=10, landscape_type='hilly')
+    elevation_map, peaks = generate_elevation_map(area_size=area_size, elevation_range=elevation_range, num_peaks=10, landscape_type=landscape_type)
 
     # For nodes in the graph, assign node type, an ID, elevation, base demand, minimum pressure and coordinates
     for i in graph.nodes():
@@ -171,17 +167,8 @@ def generate_branched_network(
         # Get coordinates from the stored 'coordinates' attribute
         x, y = graph.nodes[i]['coordinates']
         
-        # Convert coordinates to proper grid indices (improved mapping)
-        # Find the relative position in the area and map to grid indices
-        grid_x = int((x / area_size[0]) * (grid_size))
-        grid_y = int((y / area_size[1]) * (grid_size))
-        
-        # Ensure indices are within bounds
-        grid_x = max(0, min(grid_x, grid_size-1))
-        grid_y = max(0, min(grid_y, grid_size-1))
-        
         # Assign elevation from the map
-        graph.nodes[i]['elevation'] = elevation_map[grid_x, grid_y]
+        graph.nodes[i]['elevation'] = elevation_map[int(x), int(y)]
         graph.nodes[i]['min_pressure'] = 20 # Minimum pressure in the system
 
         if graph.nodes[i]['type'] == 'residential':

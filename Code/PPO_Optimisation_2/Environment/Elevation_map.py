@@ -15,13 +15,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 def generate_elevation_map(area_size=(100, 100), elevation_range=(0, 100), 
-                           num_peaks=3, landscape_type='flat', seed=None):
+                           num_peaks=10, landscape_type='flat', seed=None):
     """
     Generate an elevation map using Gaussian peaks.
     
     Parameters:
-    - area_size: Tuple[int, int], the (width, height) of the area
-    - elevation_range: Tuple[float, float], (min_elevation, max_elevation)
+    - area_size: Tuple[int, int], the (width, height) of the area (km)
+    - elevation_range: Tuple[float, float], (min_elevation, max_elevation) (m)
     - num_peaks: int, number of elevation peaks
     - landscape_type: str, either 'flat' or 'hilly'
     - seed: Optional[int], for reproducibility
@@ -39,12 +39,16 @@ def generate_elevation_map(area_size=(100, 100), elevation_range=(0, 100),
     X, Y = np.meshgrid(x, y)
     elevation_map = np.zeros_like(X)
 
+    # Scale sigma values according to area size
+    avg_dimension = (width + height) / 2
+    sigma_scale = avg_dimension / 100  # Adjust this scale factor as needed
+
     # Define Gaussian parameters based on landscape type
     if landscape_type == 'flat':
-        sigma_range = (20, 40)
+        sigma_range = (20 * sigma_scale, 40 * sigma_scale)
         amp_range = (10, 30)
     elif landscape_type == 'hilly':
-        sigma_range = (5, 15)
+        sigma_range = (5 * sigma_scale, 15 * sigma_scale)
         amp_range = (30, 70)
     else:
         raise ValueError("landscape_type must be 'flat' or 'hilly'")
@@ -91,6 +95,6 @@ if __name__ == "__main__":
     # Example usage
     elevation_map, peaks = generate_elevation_map(area_size=(1000, 1000), 
                                                   elevation_range=(0, 100), 
-                                                  num_peaks=25, 
+                                                  num_peaks=2, 
                                                   landscape_type='flat')
     plot_elevation_map(elevation_map, peaks)
