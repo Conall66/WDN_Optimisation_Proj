@@ -52,23 +52,99 @@ def convert_graph_to_wntr(graph):
 
     """Positions don't need to be passed, since all infomation about positions is encapsulated by connections and lengths of edges."""
 
+    # for node, data in graph.nodes(data=True):
+    #     if data['type'] == 'Junction':
+    #         wn.add_junction(node, base_demand=data['demand'], elevation=data['elevation'])
+    #     elif data['type'] == 'Reservoir':
+    #         wn.add_reservoir(node, base_head=data['head']) # Head is the elevation here
+    #     elif data['type'] == 'Tank':
+    #         wn.add_tank(node, elevation=data['elevation'], init_level=data['init_level'], min_level=data['min_level'], max_level=data['max_level'])
+    #     elif data['type'] == 'Pump':
+    #         wn.add_pump(node, node1=data['node1'], node2=data['node2'], pump_parameter=data['pump_parameter'], pump_type=data['pump_type'])
+
     for node, data in graph.nodes(data=True):
-        if data['type'] == 'Junction':
-            wn.add_junction(node, base_demand=data['demand'], elevation=data['elevation'])
-        elif data['type'] == 'Reservoir':
-            wn.add_reservoir(node, base_head=data['head']) # Head is the elevation here
-        elif data['type'] == 'Tank':
-            wn.add_tank(node, elevation=data['elevation'], init_level=data['init_level'], min_level=data['min_level'], max_level=data['max_level'])
-        elif data['type'] == 'Pump':
-            wn.add_pump(node, node1=data['node1'], node2=data['node2'], pump_parameter=data['pump_parameter'], pump_type=data['pump_type'])
+        if data['type'] == 'reservoir':
+            wn.add_reservoir(name = node, base_head = data['base_head'], coordinates = data['coordinates'])
+        elif data['type'] == 'tank':
+            wn.add_tank(name = node, elevation = data['elevation'], init_level = data['init_level'], min_level = data['min_level'], max_level = data['max_level'], diameter = data['diameter'], coordinates = data['coordinates'])
+        elif data['type'] == 'commercial':
+            wn.add_junction(name = node, base_demand = data['demand'], elevation = data['elevation'], coordinates = data['coordinates'])
+        elif data['type'] == 'residential':
+            wn.add_junction(name = node, base_demand = data['demand'], elevation = data['elevation'], coordinates = data['coordinates'])
+        elif data['type'] == 'junction':
+            wn.add_junction(name = node, base_demand = data['base_demand'], elevation = data['elevation'], coordinates = data['coordinates'])
+        elif data['type'] == 'pump':
+            wn.add_pump(name = node, start_node_name = data['start_node'], end_node_name = data['end_node'], pump_parameter = data['pump_parameter'], pump_type = data['pump_type'])
 
     # Add pipes to the water network model with assigned diameters and roughness values
+    pipe_count = 1
     for u, v, data in graph.edges(data=True):
-        wn.add_pipe(name = f"{u}_{v}", start_node_name = f"{u}", end_node_name = f"{v}", length=data['length'], diameter=data['diameter'], roughness=data['roughness'])
+        wn.add_pipe(name = f"{pipe_count}", start_node_name = f"{u}", end_node_name = f"{v}", length=data['length'], diameter=data['diameter'])
+        pipe_count += 1
 
     return wn
 
-def run_epanet_simulation(wn, duration = (24*3600), time_step = 3600):
+def convert_wntr_to_nx(wn, results=None):
+    """
+    Convert a WNTR model to a NetworkX graph compatible with visualise_network
+    """
+    G = nx.Graph()
+    
+    # Add nodes
+    for node_name, node in wn.nodes():
+        # Get coordinates
+        coords = node.coordinates
+        
+        # Determine node type and add appropriate attributes
+        if isinstance(node, wntr.network.elements.Junction):
+            node_type = 'residential'  # Using residential as default for junctions
+            G.add_node(node_name, 
+                      type=node_type, 
+                      coordinates=coords,
+                      elevation=node.elevation,
+                      base_demand=node.base_demand)
+        
+        elif isinstance(node, wntr.network.elements.Reservoir):
+            G.add_node(node_name, 
+                      type='reservoir', 
+                      coordinates=coords,
+                      elevation=0,
+                      base_head=node.base_head)
+            
+        elif isinstance(node, wntr.network.elements.Tank):
+            G.add_node(node_name, 
+                      type='tank', 
+                      coordinates=coords,
+                      elevation=node.elevation,
+                      init_level=node.init_level)
+    
+    # Add edges (pipes and pumps)
+    for link_name, link in wn.links():
+        start_node = link.start_node_name
+        end_node = link.end_node_name
+        
+        if isinstance(link, wntr.network.elements.Pipe):
+            G.add_edge(start_node, end_node,
+                      node_id=link_name,
+                      length=link.length,
+                      diameter=link.diameter,
+                      roughness=link.roughness)
+                      
+        elif isinstance(link, wntr.network.elements.Pump):
+            if link.pump_type == 'POWER':
+                G.add_edge(start_node, end_node,
+                          node_id=link_name,
+                          pump_type=link.pump_type,
+                          pump_parameter=link.pump_parameter)
+            else:
+                G.add_edge(start_node, end_node,
+                          node_id=link_name,
+                          pump_type=link.pump_type,
+                          pump_curve=link.pump_curve_name)
+    
+    return G
+
+def run_epanet_simulation(wn, static = True):
 
     """
     Run EPANET simulation on the water network model.
@@ -87,9 +163,9 @@ def run_epanet_simulation(wn, duration = (24*3600), time_step = 3600):
     print("Running EPANET simulation...")
 
     # Initialise simulation parameters
-    wn.options.time.duration = duration
-    wn.options.time.hydraulic_timestep = time_step
-    wn.options.time.quality_timestep = time_step
+    wn.options.time.duration = 0
+    # wn.options.time.hydraulic_timestep = time_step
+    # wn.options.time.quality_timestep = time_step
     wn.options.hydraulic.headloss = 'D-W' # Using D-C for higher accuracy
 
     # print(f"Options set for simulation: {wn.options}")
@@ -114,10 +190,10 @@ def evaluate_network_performance(wn, results, min_pressure = 20, final_time = 36
     dict: A dictionary containing the performance metrics.
     """
 
-    print("Evaluating network performance...")
+    # print("Evaluating network performance...")
 
     # Restructure wn.node_name_list so that all junctions come first, followed by reservoirs then tanks
-    junctions = [node for node in wn.node_name_list if wn.get_node(node).node_type == 'Junction']
+    junctions = [node for node in wn.node_name_list if wn.get_node(node).node_type == 'residential' or wn.get_node(node).node_type == 'commercial']
     reservoirs = [node for node in wn.node_name_list if wn.get_node(node).node_type == 'Reservoir']
     tanks = [node for node in wn.node_name_list if wn.get_node(node).node_type == 'Tank']
     nodes = junctions + reservoirs + tanks
@@ -146,7 +222,6 @@ def evaluate_network_performance(wn, results, min_pressure = 20, final_time = 36
                 if pump_name in results.link['energy'].columns:
                     energy_values = results.link['energy'][pump_name].values
                     total_energy_consumption += np.sum(energy_values)
-    
 
     return {
         'pressure_deficit': pressure_deficit,
