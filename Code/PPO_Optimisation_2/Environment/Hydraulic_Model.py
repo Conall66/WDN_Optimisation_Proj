@@ -163,10 +163,15 @@ def run_epanet_simulation(wn, static = True):
     print("Running EPANET simulation...")
 
     # Initialise simulation parameters
-    wn.options.time.duration = 0
-    # wn.options.time.hydraulic_timestep = time_step
-    # wn.options.time.quality_timestep = time_step
-    wn.options.hydraulic.headloss = 'D-W' # Using D-C for higher accuracy
+    # wn.options.time.duration = 0  # Steady state simulation
+    # wn.options.time.hydraulic_timestep = 3600
+    # wn.options.time.pattern_timestep = 3600
+    # wn.options.time.report_timestep = 3600
+
+    # # Set hydraulic options for better convergence
+    # wn.options.hydraulic.accuracy = 0.01  # Set accuracy for hydraulic calculations
+    # wn.options.hydraulic.headloss = 'H-W'  # Hazen-Williams
+    # wn.options.hydraulic.demand_model = 'DDA'  # Demand-driven analysis is more stable
 
     # print(f"Options set for simulation: {wn.options}")
 
