@@ -17,7 +17,8 @@ import math
 import random
 
 from Hydraulic_Model import *
-from Visualise_network import *
+from Visualise_2 import *
+from Elevation_map import *
 
 def generate_test_graph_structures():
 
@@ -131,7 +132,7 @@ def generate_test_wntr_model():
     # Add a reservoir node
     wn.add_reservoir('R1', base_head=100, coordinates=(0, 100))
     # Add a tank node
-    wn.add_tank('T1', elevation=30, init_level=50, min_level=0, max_level=100, diameter=10, coordinates=(100, 100))
+    wn.add_tank('T1', elevation=80, init_level=50, min_level=0, max_level=100, diameter=10, coordinates=(100, 100))
     # Add junctions
     # Add junctions with MUCH LOWER demands (0.01 instead of 10)
     wn.add_junction('J1', base_demand=0.01, elevation=100, coordinates=(0, 90))
@@ -141,9 +142,9 @@ def generate_test_wntr_model():
     wn.add_junction('J5', base_demand=0.01, elevation=60, coordinates=(60, 20))
     wn.add_junction('J6', base_demand=0.01, elevation=50, coordinates=(80, 20))
     wn.add_junction('J7', base_demand=0.01, elevation=40, coordinates=(100, 20))
-    wn.add_junction('J8', base_demand=0.01, elevation=30, coordinates=(100, 40))
-    wn.add_junction('J9', base_demand=0.01, elevation=20, coordinates=(100, 60))
-    wn.add_junction('J10', base_demand=0.01, elevation=20, coordinates=(100, 80))
+    wn.add_junction('J8', base_demand=0.01, elevation=50, coordinates=(100, 40))
+    wn.add_junction('J9', base_demand=0.01, elevation=60, coordinates=(100, 60))
+    wn.add_junction('J10', base_demand=0.01, elevation=70, coordinates=(100, 80))
     
     Pipes = {
         'Pipe 1': {'diameter': 0.152, 'unit_cost': 68, 'carbon_emissions': 0.48},
@@ -207,90 +208,94 @@ def generate_test_wntr_model():
 
     return wn, results
 
-if __name__ == "__main__":
+# Generate random lobster graph and convert into wntr model
+def generate_test_lobster_wntr():
+
+    G = nx.random_graphs.random_lobster(10, 0.5, 0.2) # num nodes, proba of adding edge to backbone, prob of adding edge one level beyond
+    # Assign positions to nodes based on position in G
+    pos = nx.spring_layout(G)
+    # Scale positions to fit in a 100x100 grid
+    pos = {node: (x * 100, y * 100) for node, (x, y) in pos.items()}
+
+    # Assing node types
+    centrality = nx.betweenness_centrality(G)
+    reservoir_candidates = sorted(centrality, key=centrality.get, reverse=True)[:2]
+    tanks_candidates = [node for node, degree in G.degree() if degree == 1]
+    edge_betweenness = nx.edge_betweenness_centrality(G)
+    pump_candidates = sorted(edge_betweenness, key=edge_betweenness.get, reverse=True)[:3]
+
+    # Create wntr model
+    wn = wntr.network.WaterNetworkModel()
+
+    # Create elevation map
+    elevation_map, peaks = generate_elevation_map(area_size=(1000, 1000),
+                                                  elevation_range=(0, 100), 
+                                                  num_peaks=2, 
+                                                  landscape_type='hilly')
+
+    # Create reservoir from candidates
+    reservoir_pos = random.choice(reservoir_candidates)
+    # Get elevation value
+    reservoir_elevation = elevation_map[int(pos[reservoir_pos][1]), int(pos[reservoir_pos][0])]
+    wn.add_reservoir('R1', base_head=reservoir_elevation, coordinates=pos[reservoir_pos])
+
+    # Create tank from candidates
+    tank_pos = random.choice(tanks_candidates)
+    # Get elevation value
+    tank_elevation = elevation_map[int(pos[tank_pos][1]), int(pos[tank_pos][0])]
+    wn.add_tank('T1', elevation=tank_elevation, init_level=50, min_level=0, max_level=100, diameter=10, coordinates=pos[tank_pos])
+
+    # Create junctions
+    for node in G.nodes():
+        if node not in [reservoir_pos, tank_pos]:
+            # Get elevation value
+            elevation = elevation_map[int(pos[node][1]), int(pos[node][0])]
+            wn.add_junction(f'J{node}', base_demand=0.01, elevation=elevation, coordinates=pos[node])
     
-    # Generate test wntr model
-    wn, results = generate_test_wntr_model()
+    # Create pipes
+    pipe_counter = 1
+    for edge in G.edges():
+        node1, node2 = edge
+        start_node_name = f'J{node1}' if node1 not in [reservoir_pos, tank_pos] else 'R1'
+        end_node_name = f'J{node2}' if node2 not in [reservoir_pos, tank_pos] else 'T1'
+        length = random.uniform(10, 100)  # Random length between 10 and 100 meters
+        diameter = random.choice([0.152, 0.203, 0.254])  # Random diameter from the list
+        roughness = random.choice([0.0001, 0.0002, 0.0003])
+        wn.add_pipe(f"P{pipe_counter}", start_node_name=start_node_name, end_node_name=end_node_name,
+                    length=length, diameter=diameter, roughness=roughness)
+        pipe_counter += 1
+        
+    # Create pumps
+    for pump in pump_candidates:
+        node1, node2 = pump
+        start_node_name = f'J{node1}' if node1 not in [reservoir_pos, tank_pos] else 'R1'
+        end_node_name = f'J{node2}' if node2 not in [reservoir_pos, tank_pos] else 'T1'
+        wn.add_pump(f'Pump_{node1}_{node2}', start_node_name=start_node_name, end_node_name=end_node_name,
+                    pump_parameter=50, pump_type='POWER')
+        
+    # Run hydraulic simulation
+    wn.options.time.duration = 0  # Steady state simulation
+    wn.options.time.hydraulic_timestep = 3600
+    wn.options.time.pattern_timestep = 3600
+    wn.options.time.report_timestep = 3600
+
+    # Set hydraulic options for better convergence
+    wn.options.hydraulic.accuracy = 0.01  # Set accuracy for hydraulic calculations
+    wn.options.hydraulic.headloss = 'H-W'  # Hazen-Williams
+    wn.options.hydraulic.demand_model = 'DDA'  # Demand-driven analysis is more stable
+    sim = wntr.sim.EpanetSimulator(wn)
+    results = sim.run_sim()
 
     # Visualise the network
-    G = wn.get_graph()
-    # Get node coordinates
-    pos = wn.query_node_attribute('coordinates')
+    visualise_wntr(wn = wn, elevation_map = elevation_map, results = results, title="Random Lobster WNTR Model")
 
-    # Get pressure results for the first timestep (index 0)
-    pressure = results.node['pressure'].iloc[0].to_dict()
+if __name__ == "__main__":
     
-    # Get headloss results for the first timestep
-    headloss = results.link['headloss'].iloc[0].to_dict()
+    # # Generate test wntr model
+    # wn, results = generate_test_wntr_model()
 
-    # Create figure and axis
-    fig, ax = plt.subplots(figsize=(12, 8))
-    
-    # Create node lists by type
-    junction_nodes = [node_name for node_name, node in wn.nodes() if node.node_type == 'Junction']
-    reservoir_nodes = [node_name for node_name, node in wn.nodes() if node.node_type == 'Reservoir']
-    tank_nodes = [node_name for node_name, node in wn.nodes() if node.node_type == 'Tank']
-    
-    # Get edges (pipes and pumps)
-    pipes = [link_name for link_name, link in wn.links() if link.link_type == 'Pipe']
-    pumps = [link_name for link_name, link in wn.links() if link.link_type == 'Pump']
-    
-    # Draw the different types of edges
-    nx.draw_networkx_edges(G, pos, ax=ax, edgelist=[(wn.get_link(p).start_node_name, wn.get_link(p).end_node_name) for p in pipes],
-                          width=1.0, edge_color='gray', style='solid')
-    nx.draw_networkx_edges(G, pos, ax=ax, edgelist=[(wn.get_link(p).start_node_name, wn.get_link(p).end_node_name) for p in pumps],
-                          width=2.0, edge_color='red', style='dashed')
-    
-    # Draw the different types of nodes with pressure-based coloring
-    # Create normalized pressure values for color mapping (for junctions only)
-    junction_pressure_values = [pressure[node] for node in junction_nodes]
-    vmin = min(junction_pressure_values) if junction_pressure_values else 0
-    vmax = max(junction_pressure_values) if junction_pressure_values else 100
-    
-    # Draw junctions with pressure-based coloring
-    junction_nodes_collection = nx.draw_networkx_nodes(
-        G, pos, ax=ax, nodelist=junction_nodes, node_size=300, 
-        node_color=junction_pressure_values, cmap=plt.cm.viridis,
-        vmin=vmin, vmax=vmax, node_shape='o')
-    
-    # Add a colorbar for pressure - now with explicit axes reference
-    sm = plt.cm.ScalarMappable(cmap=plt.cm.viridis, norm=plt.Normalize(vmin=vmin, vmax=vmax))
-    sm.set_array([])
-    cbar = plt.colorbar(sm, ax=ax, shrink=0.7, label='Pressure (m)')
-    
-    # Draw other nodes
-    nx.draw_networkx_nodes(G, pos, ax=ax, nodelist=reservoir_nodes, node_size=500, node_color='blue', node_shape='s')
-    nx.draw_networkx_nodes(G, pos, ax=ax, nodelist=tank_nodes, node_size=500, node_color='green', node_shape='^')
-    
-    # Add labels to nodes
-    nx.draw_networkx_labels(G, pos, ax=ax, font_size=10)
-    
-    # Add pressure values as text labels
-    pressure_labels = {node: f"{pressure[node]:.1f}" for node in pressure if node in junction_nodes}
-    nx.draw_networkx_labels(G, pos, ax=ax, labels=pressure_labels, font_size=8, font_color='black',
-                           font_weight='bold', verticalalignment='bottom', bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.7))
-    
-    # Add headloss values as edge labels
-    edge_labels = {}
-    for pipe in pipes:
-        start_node = wn.get_link(pipe).start_node_name
-        end_node = wn.get_link(pipe).end_node_name
-        if pipe in headloss:
-            edge_labels[(start_node, end_node)] = f"{headloss[pipe]:.2f}"
-    
-    nx.draw_networkx_edge_labels(G, pos, ax=ax, edge_labels=edge_labels, font_size=7)
-    
-    # Add legend
-    legend_elements = [
-        mpatches.Patch(color='lightblue', label='Junction'),
-        mpatches.Patch(color='blue', label='Reservoir'),
-        mpatches.Patch(color='green', label='Tank'),
-        plt.Line2D([0], [0], color='gray', lw=1, label='Pipe'),
-        plt.Line2D([0], [0], color='red', linestyle='dashed', lw=2, label='Pump')
-    ]
-    ax.legend(handles=legend_elements, loc='best')
-    
-    ax.set_title('Water Distribution Network with Pressures and Headlosses')
-    ax.axis('off')
-    plt.tight_layout()
-    plt.show()
+    # # Visualise the network
+    # visualise_wntr(wn, results, title="Test WNTR Model", elevation_map=None)
+
+    # Generate lobster
+    generate_test_lobster_wntr()
