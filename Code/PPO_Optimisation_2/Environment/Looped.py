@@ -31,4 +31,4 @@ def generate_looped_network(
         elevation_range = [0, 100],
         environment_type = 'urban'):
     
-    return graph
+    return None

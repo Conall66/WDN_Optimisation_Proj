@@ -37,7 +37,7 @@ def visualise_network(graph, elevation_map = None, results=None, title="Water Di
         # Display the elevation map with the correct extent
         # Important: match the extent to the area_size used in network generation
         plt.imshow(elevation_map, origin='lower', cmap='terrain', alpha=0.5, 
-                extent=[min_x, max_x, min_y, max_y])
+                extent=(min_x, max_x, min_y, max_y))
         plt.colorbar(label='Elevation (m)', shrink=0.7)
     
     # Display the elevation map with the correct extent

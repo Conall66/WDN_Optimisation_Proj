@@ -17,7 +17,7 @@ import math
 import random
 
 from Hydraulic_Model import *
-from Visualise_2 import *
+# from Visualise_2 import *
 from Elevation_map import *
 
 def generate_test_graph_structures():
@@ -178,7 +178,7 @@ def generate_test_wntr_model():
         diameter = Pipes[pipe]['diameter'] * 1000  # Convert to mm
         unit_cost = Pipes[pipe]['unit_cost']
         carbon_emissions = Pipes[pipe]['carbon_emissions']
-        roughness = random.choice(roughness_values)
+        roughness = int(random.choice(roughness_values))
         
         wn.add_pipe(name=node_id, start_node_name=node1, end_node_name=node2, 
                     length=length, diameter=diameter, roughness=roughness)
@@ -287,7 +287,8 @@ def generate_test_lobster_wntr():
     results = sim.run_sim()
 
     # Visualise the network
-    visualise_wntr(wn = wn, elevation_map = elevation_map, results = results, title="Random Lobster WNTR Model")
+    # visualise_wntr(wn = wn, elevation_map = elevation_map, results = results, title="Random Lobster WNTR Model")
+    return wn, results
 
 if __name__ == "__main__":
     
@@ -298,4 +299,9 @@ if __name__ == "__main__":
     # visualise_wntr(wn, results, title="Test WNTR Model", elevation_map=None)
 
     # Generate lobster
-    generate_test_lobster_wntr()
+    wn, results = generate_test_lobster_wntr()
+
+    # Display the lobster graph
+    # plt.figure(figsize=(10, 10))
+    # nx.draw(wn.get_graph(), pos=pos, with_labels=True, node_size=500, node_color='lightblue', font_size=10)
+    
