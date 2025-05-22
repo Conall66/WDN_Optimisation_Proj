@@ -50,10 +50,9 @@ def visualise_network(wn, results, title, save_path, mode='3d'):
 
     # Get network graph, positions, and elevations
     G = wn.get_graph()
-    pos = nx.get_node_attributes(G, 'coordinates')
-    # Check node positions exist
 
-    elevations = nx.get_node_attributes(G, 'elevation')
+    pos = wn.query_node_attribute('coordinates')
+    # Check node positions exist
 
     # Extract data from results
     pressures = results.node['pressure'].iloc[0].to_dict()
@@ -87,7 +86,7 @@ def visualise_network(wn, results, title, save_path, mode='3d'):
 
     # Override the colours of junctions with the pressure values
     pressure_norm = Normalize(vmin=np.min(list(pressures.values())), vmax=np.max(list(pressures.values())))
-    pressure_cmap = plt.get_cmap('coolwarm')
+    pressure_cmap = plt.get_cmap('magma')
     pressure_colors = {node: pressure_cmap(pressure_norm(value)) for node, value in pressures.items()}
     
     # Create a ScalarMappable for the pressure color map
@@ -95,7 +94,7 @@ def visualise_network(wn, results, title, save_path, mode='3d'):
     pressure_sm.set_array([])  # Only needed for colorbar
     
     # Create a colorbar for pressure
-    cbar = plt.colorbar(pressure_sm, ax=ax)
+    cbar = plt.colorbar(pressure_sm, ax=ax, shrink=0.5)
     cbar.set_label('Pressure (m)')
     min_pressure = np.min(list(pressures.values()))
     max_pressure = np.max(list(pressures.values()))
@@ -104,7 +103,7 @@ def visualise_network(wn, results, title, save_path, mode='3d'):
 
     # Create a color map for headlosses
     headloss_norm = Normalize(vmin=np.min(list(headlosses.values())), vmax=np.max(list(headlosses.values())))
-    headloss_cmap = plt.get_cmap('magma')
+    headloss_cmap = plt.get_cmap('plasma')
     headloss_colors = {link: headloss_cmap(headloss_norm(value)) for link, value in headlosses.items()}
 
     # Create a ScalarMappable for the headloss color map
@@ -112,7 +111,7 @@ def visualise_network(wn, results, title, save_path, mode='3d'):
     headloss_sm.set_array([])  # Only needed for colorbar
     
     # Create a colorbar for headloss
-    cbar_headloss = plt.colorbar(headloss_sm, ax=ax)
+    cbar_headloss = plt.colorbar(headloss_sm, ax=ax, shrink=0.5)
     cbar_headloss.set_label('Headloss (m)')
     min_headloss = np.min(list(headlosses.values()))
     max_headloss = np.max(list(headlosses.values()))
@@ -146,7 +145,7 @@ def visualise_network(wn, results, title, save_path, mode='3d'):
                     scatter = ax.scatter(
                         pos[node][0],
                         pos[node][1],
-                        elevations[node],
+                        get_node_elevation(wn, node),
                         marker=marker,
                         color=color,
                         s=100
@@ -182,8 +181,8 @@ def visualise_network(wn, results, title, save_path, mode='3d'):
         if start_node in pos and end_node in pos:
             start_pos = pos[start_node]
             end_pos = pos[end_node]
-            start_elev = elevations[start_node]
-            end_elev = elevations[end_node]
+            start_elev = get_node_elevation(wn, start_node)
+            end_elev = get_node_elevation(wn, end_node)
             
             # Get pipe diameter for line width
             diameter = pipe_obj.diameter
@@ -218,10 +217,34 @@ def visualise_network(wn, results, title, save_path, mode='3d'):
     # Adjust layout and save
     plt.tight_layout()
     plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    plt.show()
-    plt.close(figure)
+    # plt.show()
+    # plt.close(figure)
     
     return figure
+
+def get_node_elevation(wn, node_name):
+    """
+    Get the elevation of a node in the water network model.
+
+    Parameters:
+    wn (wntr.network.WaterNetworkModel): The water network model.
+    node_name (str): The name of the node.
+
+    Returns:
+    float: The elevation of the node.
+    """
+    if node_name in wn.junction_name_list:
+        return wn.get_node(node_name).elevation
+    elif node_name in wn.tank_name_list:
+        return wn.get_node(node_name).elevation
+    elif node_name in wn.reservoir_name_list:
+        return wn.get_node(node_name).base_head
+    elif node_name in wn.valve_name_list:
+        return wn.get_node(node_name).elevation
+    elif node_name in wn.pump_name_list:
+        return wn.get_node(node_name).elevation
+    else:
+        return 0
 
 
 # Example usage:

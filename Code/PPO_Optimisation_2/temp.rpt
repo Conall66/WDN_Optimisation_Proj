@@ -1,4 +1,4 @@
-  Page 1                                    Wed May 21 23:25:35 2025
+  Page 1                                    Thu May 22 12:51:24 2025
 
   ******************************************************************
   *                           E P A N E T                          *
@@ -7,6 +7,22 @@
   *                         Version 2.2                            *
   ******************************************************************
   
-  Analysis begun Wed May 21 23:25:35 2025
+  Analysis begun Thu May 22 12:51:24 2025
 
-  Analysis ended Wed May 21 23:25:35 2025
+   
+  Hydraulic Status:
+  -----------------------------------------------------------------------
+     0:00:00: Balancing the network:
+
+              Trial  1: relative flow change = 1.313341
+              Trial  2: relative flow change = 0.393364
+              Trial  3: relative flow change = 0.028807
+              Trial  4: relative flow change = 0.000312
+              Trial  5: relative flow change = 0.000000
+                        maximum  flow change = 0.0000 for Link 4
+                        maximum  head error  = 0.0000 for Link 4
+
+     0:00:00: Balanced after 5 trials
+     0:00:00: Reservoir 1 is emptying
+   
+  Analysis ended Thu May 22 12:51:24 2025
