@@ -24,7 +24,7 @@ from Hydraulic_Model import run_epanet_simulation, evaluate_network_performance
 # file_1 = os.path.join('Newtorks', 'exeter', 'sampletown.inp.inp')
 # Check file exist in directory
 
-def initial_network_analysis(file_path, save_directory, file_name):
+def network_analysis(file_path, save_directory, file_name):
     """
     Function to perform network analysis on a given file.
     
@@ -53,27 +53,31 @@ def initial_network_analysis(file_path, save_directory, file_name):
     
     return wn, results, metrics
 
-script = os.path.dirname(__file__)
-# Get all networks in the networks folder
-networks_dir = os.path.join(script, 'Networks')
-network_files = [f for f in os.listdir(networks_dir) if f.endswith('.inp')]
+if __name__ == "__main__":
+    # Set the directory where the networks are stored
+    # Get the current script directory
 
-# Process all .inp files in all subdirectories of Networks
-processed_files = 0
-error_files = 0
+    script = os.path.dirname(__file__)
+    # Get all networks in the networks folder
+    networks_dir = os.path.join(script, 'Initial_networks')
+    network_files = [f for f in os.listdir(networks_dir) if f.endswith('.inp')]
 
-save_directory = os.path.join(script, 'Network_visualisation')
+    # Process all .inp files in all subdirectories of Networks
+    processed_files = 0
+    error_files = 0
 
-for root, dirs, files in os.walk(networks_dir):
-    for file in files:
-        if file.endswith('.inp'):
-            file_path = os.path.join(root, file)
-            file_name = os.path.splitext(file)[0] # Get file name without extension
-            success = initial_network_analysis(file_path, save_directory, file_name)
-            if success:
-                processed_files += 1
-            else:
-                error_files += 1
+    save_directory = os.path.join(script, 'Initial_network_visualisation')
 
-print(f"Processing complete. Successfully processed {processed_files} files. Errors: {error_files}")
+    for root, dirs, files in os.walk(networks_dir):
+        for file in files:
+            if file.endswith('.inp'):
+                file_path = os.path.join(root, file)
+                file_name = os.path.splitext(file)[0] # Get file name without extension
+                success = network_analysis(file_path, save_directory, file_name)
+                if success:
+                    processed_files += 1
+                else:
+                    error_files += 1
+
+    print(f"Processing complete. Successfully processed {processed_files} files. Errors: {error_files}")
 

@@ -3,32 +3,28 @@
 
 [JUNCTIONS]
 ;ID              	Elev        	Demand      	Pattern         
- 2               	0           	0           	                	;
- 3               	0           	0           	                	;
- 4               	0           	0           	                	;
- 5               	0           	0           	                	;
+ J1              	0           	0           	                	;
+ J2              	0           	0           	                	;
 
 [RESERVOIRS]
 ;ID              	Head        	Pattern         
- 1               	60          	                	;
- 6               	30          	                	;
+ R1              	50          	                	;
+ R2              	25          	                	;
 
 [TANKS]
 ;ID              	Elevation   	InitLevel   	MinLevel    	MaxLevel    	Diameter    	MinVol      	VolCurve
 
 [PIPES]
 ;ID              	Node1           	Node2           	Length      	Diameter    	Roughness   	MinorLoss   	Status
- 1               	1               	2               	400         	500         	95          	0           	Open  	;
- 2               	3               	4               	200         	500         	95          	0           	Open  	;
- 3               	5               	6               	600         	500         	95          	0           	Open  	;
+ P1              	R1              	J1              	500         	500         	100         	0           	Open  	;
+ P2              	J2              	R2              	500         	500         	100         	0           	Open  	;
+ P3              	J1              	J2              	500         	500         	100         	0           	Open  	;
 
 [PUMPS]
 ;ID              	Node1           	Node2           	Parameters
 
 [VALVES]
 ;ID              	Node1           	Node2           	Diameter    	Type	Setting     	MinorLoss   
- 4               	2               	3               	500         	FCV 	2000        	0           	;
- 5               	4               	5               	500          	PRV 	20.          	0           	;
 
 [TAGS]
 
@@ -37,8 +33,6 @@
 
 [STATUS]
 ;ID              	Status/Setting
-;4                   OPEN
-;5                   OPEN
 
 [PATTERNS]
 ;ID              	Multipliers
@@ -102,7 +96,7 @@
  Specific Gravity   	1
  Viscosity          	1
  Trials             	40
- Accuracy           	0.0001
+ Accuracy           	0.001
  CHECKFREQ          	2
  MAXCHECK           	10
  DAMPLIMIT          	0
@@ -116,12 +110,10 @@
 
 [COORDINATES]
 ;Node            	X-Coord         	Y-Coord
- 2               	3134.92         	7380.95         
- 3               	4357.14         	7333.33         
- 4               	6452.38         	7349.21         
- 5               	7468.25         	7317.46         
- 1               	1214.29         	7365.08         
- 6               	8738.10         	7301.59         
+ J1              	4404.76         	6603.17         
+ J2              	5849.21         	6634.92         
+ R1              	2626.98         	6634.92         
+ R2              	7595.24         	6698.41         
 
 [VERTICES]
 ;Link            	X-Coord         	Y-Coord

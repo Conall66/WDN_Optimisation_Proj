@@ -1,5 +1,5 @@
 [TITLE]
-
+Network 3 (from Siew & Tanyimboh)
 
 [JUNCTIONS]
 ;ID              	Elev        	Demand      	Pattern         
@@ -15,8 +15,8 @@
 
 [RESERVOIRS]
 ;ID              	Head        	Pattern         
- 10              	158         	                	;
- 11              	238         	                	;
+ 10              	120   ;158         	                	;
+ 11              	200  ;238         	                	;
 
 [TANKS]
 ;ID              	Elevation   	InitLevel   	MinLevel    	MaxLevel    	Diameter    	MinVol      	VolCurve
@@ -133,6 +133,13 @@
  Quality            	None mg/L
  Diffusivity        	1
  Tolerance          	0.01
+ 
+ ;Head Accuracy         	3.038e-4
+ ;Flow Accuracy          2.832e-2
+ ;Step Sizing            FULL ;LINESEARCH ;  HEURISTIC ;
+ ;Demand Model           FIXED ;LOGISTIC ; ORIFICE ;  PRESSURE_DEFICIENT  ;
+ ;Minimum Pressure       0
+ ;Full Pressure          30
 
 [COORDINATES]
 ;Node            	X-Coord         	Y-Coord

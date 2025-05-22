@@ -4,20 +4,20 @@ ANYTOWN example
 [JUNCTIONS]
 ;ID              	Elev        	Demand      	Pattern         
  1               	20          	500         	1               	;
- 2               	50          	50          	1               	;
+ 2               	50          	200         	1               	;
  3               	50          	200         	1               	;
- 4               	50          	50          	1               	;
- 5               	80          	50          	1               	;
+ 4               	50          	600         	1               	;
+ 5               	80          	600         	1               	;
  6               	80          	600         	1               	;
  7               	80          	600         	1               	;
  8               	80          	400         	1               	;
- 9               	120         	50          	1               	;
- 10              	120         	50          	1               	;
+ 9               	120         	400         	1               	;
+ 10              	120         	400         	1               	;
  11              	120         	400         	1               	;
- 12              	50          	50          	1               	;
+ 12              	50          	500         	1               	;
  13              	50          	500         	1               	;
  14              	50          	500         	1               	;
- 15              	50          	50          	1               	;
+ 15              	50          	500         	1               	;
  16              	120         	400         	1               	;
  17              	120         	1000        	1               	;
  18              	50          	500         	1               	;
@@ -72,8 +72,8 @@ ANYTOWN example
  39              	17              	18              	6000        	8           	120         	0           	Open  	;Res
  40              	17              	22              	100         	12          	120         	0           	Open	;Res
  41              	18              	19              	6000        	10          	70          	0           	Open  	;city
- 142             	21              	41              	1           	12          	120         	0           	Open 	;city
- 143             	22              	42              	1           	12          	120         	0           	Open 	;Res
+ 142             	21              	41              	1           	12          	120         	0           	Open  	;city
+ 143             	22              	42              	1           	12          	120         	0           	Open  	;Res
  110             	4               	5               	6000        	12          	130         	0           	Open  	;New
  113             	5               	6               	6000        	12          	130         	0           	Open  	;New
  114             	6               	7               	6000        	12          	130         	0           	Open  	;New
@@ -203,7 +203,7 @@ ANYTOWN example
  DAMPLIMIT          	0
  Unbalanced         	Continue 10
  Pattern            	1
- Demand Multiplier  	1.0
+ Demand Multiplier  	1.8
  Emitter Exponent   	0.5
  Quality            	NONE mg/L
  Diffusivity        	1.0
@@ -211,8 +211,8 @@ ANYTOWN example
  
  ;Head Accuracy         	0.001
  ;Flow Accuracy          0.45
- ;Step Sizing            HEURISTIC ;FULL ; LINESEARCH ; 
- ;Demand Model           FIXED ;LOGISTIC ; ORIFICE ;  PRESSURE_DEFICIENT  ;
+ ;Step Sizing            LINESEARCH ;HEURISTIC ;FULL ;  
+ ;Demand Model           LOGISTIC ;FIXED ; ORIFICE ;  PRESSURE_DEFICIENT  ;
  ;Minimum Pressure       0
  ;Full Pressure          40
 

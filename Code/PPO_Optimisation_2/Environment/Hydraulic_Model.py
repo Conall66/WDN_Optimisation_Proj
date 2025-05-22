@@ -154,7 +154,7 @@ def run_epanet_simulation(wn, static = True):
     duration (int): Duration of the simulation in seconds.
     time_step (int): Time step for the simulation in seconds.
 
-    Simulations will be run to simulate a single day of operation, with a time step of 1 hour (3600 seconds). By minimising the runtime duration, we can accelarate model training.
+    static (bool): If True, run a steady state simulation. If False, run a dynamic simulation.
 
     Returns:
     wntr.sim.EpanetSimulator: The EPANET simulator object.
@@ -163,10 +163,10 @@ def run_epanet_simulation(wn, static = True):
     print("Running EPANET simulation...")
 
     # Initialise simulation parameters
-    # wn.options.time.duration = 0  # Steady state simulation
-    # wn.options.time.hydraulic_timestep = 3600
-    # wn.options.time.pattern_timestep = 3600
-    # wn.options.time.report_timestep = 3600
+    wn.options.time.duration = 0  # Steady state simulation
+    wn.options.time.hydraulic_timestep = 3600
+    wn.options.time.pattern_timestep = 3600
+    wn.options.time.report_timestep = 3600
 
     # # Set hydraulic options for better convergence
     # wn.options.hydraulic.accuracy = 0.01  # Set accuracy for hydraulic calculations
@@ -182,7 +182,7 @@ def run_epanet_simulation(wn, static = True):
 
     return results
 
-def evaluate_network_performance(wn, results, min_pressure = 20, final_time = 3600):
+def evaluate_network_performance(wn, results, final_time = 3600):
 
     """
     Evaluate the performance of the water network based on simulation results.
@@ -196,6 +196,8 @@ def evaluate_network_performance(wn, results, min_pressure = 20, final_time = 36
     """
 
     # print("Evaluating network performance...")
+
+    min_pressure = wn.options.hydraulic.required_pressure  # Minimum pressure required (in m)
 
     # Restructure wn.node_name_list so that all junctions come first, followed by reservoirs then tanks
     junctions = [node for node in wn.node_name_list if wn.get_node(node).node_type == 'residential' or wn.get_node(node).node_type == 'commercial']

@@ -19,6 +19,7 @@ import random
 from Hydraulic_Model import *
 # from Visualise_2 import *
 from Elevation_map import *
+from Visualise_network import *
 
 def generate_test_graph_structures():
 
@@ -290,18 +291,43 @@ def generate_test_lobster_wntr():
     # visualise_wntr(wn = wn, elevation_map = elevation_map, results = results, title="Random Lobster WNTR Model")
     return wn, results
 
+def test_hydraulic_model(inp_graph):
+
+    wn = wntr.network.WaterNetworkModel(inp_graph)
+
+    # Run hydraulic simulation
+    sim = wntr.sim.EpanetSimulator(wn)
+    results = sim.run_sim()
+    # Visualise the network
+    visualise_network(wn = wn, results = results, title="Test WNTR Model", save_path="test.png", mode='2d')
+
 if __name__ == "__main__":
-    
-    # # Generate test wntr model
-    # wn, results = generate_test_wntr_model()
 
-    # # Visualise the network
-    # visualise_wntr(wn, results, title="Test WNTR Model", elevation_map=None)
 
-    # Generate lobster
-    wn, results = generate_test_lobster_wntr()
+    """From this test script, even the original version of the anytown network returns negative pressues and headloss values"""
+    # script = os.path.dirname(__file__)
+    # file_path = os.path.join(script, 'Imported_networks', 'epanet-example-networks', 'epanet-tests', 'exeter', 'anytown-3.inp')
+    # # check file path exists
+    # if not os.path.exists(file_path):
+    #     raise FileNotFoundError(f"File {file_path} does not exist.")
+    # test_hydraulic_model(file_path)
 
-    # Display the lobster graph
-    # plt.figure(figsize=(10, 10))
-    # nx.draw(wn.get_graph(), pos=pos, with_labels=True, node_size=500, node_color='lightblue', font_size=10)
+    """Some networks are performing as expected, but their configuration is odd"""
+    # script = os.path.dirname(__file__)
+    # file_path = os.path.join(script, 'Imported_networks', 'epanet-example-networks', 'epanet-tests', 'exeter', 'hanoi-3.inp')
+    # # check file path exists
+    # if not os.path.exists(file_path):
+    #     raise FileNotFoundError(f"File {file_path} does not exist.")
+    # test_hydraulic_model(file_path)
+
+    script = os.path.dirname(__file__)
+    file_path = os.path.join(script, 'Modified_initial_networks', 'hanoi-3_modified.inp')
+    # check file path exists
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"File {file_path} does not exist.")
+    test_hydraulic_model(file_path)
+
+
+
+
     

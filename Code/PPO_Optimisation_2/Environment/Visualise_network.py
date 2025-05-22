@@ -14,7 +14,7 @@ import wntr
 from mpl_toolkits.mplot3d import Axes3D
 
 
-def visualise_network(wn, results, title, save_path, mode='3d'):
+def visualise_network(wn, results, title, save_path, mode='3d', show = False):
     """
     Visualise the water distribution network with pressure and headloss maps.
 

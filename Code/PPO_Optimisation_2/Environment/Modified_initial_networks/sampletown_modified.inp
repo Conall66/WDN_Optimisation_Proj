@@ -1,0 +1,146 @@
+; Filename: C:\Users\conal\OneDrive - Imperial College London\Imperial\Masters Project\Git_Sync\WDN_Optimisation_Proj\Code\PPO_Optimisation_2\Environment\Modified_initial_networks\sampletown.inp
+; WNTR: 1.3.2
+; Created: 2025-05-22 20:58:50
+[TITLE]
+
+[JUNCTIONS]
+;ID                      Elevation       Demand Pattern                 
+ TreatmentPlant                     0               0                            ;
+ Montgomery                         0              80                            ;
+ Tennessee                          0             250                            ;
+ Reading                            0             100                            ;
+ Mills                              0            1000 stepdemand                 ;
+ Vine                               0              50                            ;
+
+[RESERVOIRS]
+;ID                                   Head                  Pattern
+ Resr                     32.80839895                            ;
+
+[TANKS]
+;ID                              Elevation           Init Level            Min Level            Max Level             Diameter           Min Volume Volume Curve         Overflow            
+ NewportTank                       50              40               0              80              20               0                                             ;
+
+[PIPES]
+;ID                   Node1                Node2                              Length             Diameter            Roughness           Minor Loss               Status
+ ReservoirCheckValve  Resr                 TreatmentPlant                    10               4             100               0                   CV   ;
+ 2                    TreatmentPlant       Montgomery                         3               6             100               0                 Open   ;
+ 3                    Montgomery           Tennessee                          6               6             100               0                 Open   ;
+ 4                    Tennessee            Reading                           12               6             100               0                 Open   ;
+ 5                    Reading              Mills                             24               6             100               0                 Open   ;
+ NewportTankPipe      Tennessee            NewportTank                       50               3             100               0                 Open   ;
+ 1                    Reading              Vine                              50               6             100               0                 Open   ;
+
+[PUMPS]
+;ID                   Node1                Node2                Properties          
+ Pump                 Resr                 TreatmentPlant       HEAD     PumpCurve              ;
+
+[VALVES]
+;ID                   Node1                Node2                            Diameter Type              Setting           Minor Loss
+
+[TAGS]
+;type      name       tag       
+
+[DEMANDS]
+;ID        Demand     Pattern   
+
+[STATUS]
+;ID        Setting   
+
+[PATTERNS]
+;ID        Multipliers
+
+stepdemand 1.000000 1.000000 1.000000 1.000000 1.000000 1.000000
+stepdemand 0.000000 0.000000 0.000000 0.000000 0.000000 0.000000
+
+[CURVES]
+;ID         X-Value      Y-Value     
+;PUMP: PumpCurve
+ PumpCurve      0.000000   100.000000   ;
+ PumpCurve  15850.323141   100.000000   ;
+
+
+[CONTROLS]
+
+[RULES]
+
+[ENERGY]
+GLOBAL EFFICIENCY      75.0000
+GLOBAL PRICE           0.0000
+DEMAND CHARGE          0.0000
+
+[EMITTERS]
+;ID        Flow coefficient
+
+[QUALITY]
+
+[SOURCES]
+;Node      Type       Quality    Pattern   
+
+[REACTIONS]
+;Type           Pipe/Tank               Coefficient
+
+ ORDER BULK 1
+ ORDER TANK 1
+ ORDER WALL 1
+ GLOBAL BULK 0.0000    
+ GLOBAL WALL 0.0000    
+ LIMITING POTENTIAL 0.0000    
+ ROUGHNESS CORRELATION 0.0000    
+
+[MIXING]
+;Tank ID             Model Fraction
+
+[TIMES]
+DURATION             24:00:00
+HYDRAULIC TIMESTEP   00:10:00
+QUALITY TIMESTEP     00:01:00
+PATTERN TIMESTEP     01:00:00
+PATTERN START        00:00:00
+REPORT TIMESTEP      01:00:00
+REPORT START         00:00:00
+START CLOCKTIME      00:00:00 AM
+RULE TIMESTEP        00:06:00
+STATISTIC            NONE      
+
+[REPORT]
+SUMMARY    NO
+PAGE       0
+
+[OPTIONS]
+UNITS                GPM                 
+HEADLOSS             H-W                 
+SPECIFIC GRAVITY     1
+VISCOSITY            1
+TRIALS               40
+ACCURACY             0.001
+CHECKFREQ            2
+MAXCHECK             10
+UNBALANCED           CONTINUE 10
+DEMAND MULTIPLIER    1
+EMITTER EXPONENT     0.5
+QUALITY              TRACE Resr
+DIFFUSIVITY          1
+TOLERANCE            0.01
+
+[COORDINATES]
+;Node      X-Coord    Y-Coord   
+TreatmentPlant      -1075.950000000       6943.940000000
+Montgomery       1273.730000000       6946.200000000
+Tennessee        3204.110000000       6946.200000000
+Reading          6352.850000000       6946.200000000
+Mills           10226.040000000       6943.940000000
+Vine             6356.240000000       5063.290000000
+Resr            -2414.200000000       6923.080000000
+NewportTank       3209.760000000       8318.260000000
+
+[VERTICES]
+;Link      X-Coord    Y-Coord   
+
+[LABELS]
+
+[BACKDROP]
+DIMENSIONS    0.00    0.00    10000.00    10000.00
+UNITS    METERS
+OFFSET    0.00    0.00
+
+[END]

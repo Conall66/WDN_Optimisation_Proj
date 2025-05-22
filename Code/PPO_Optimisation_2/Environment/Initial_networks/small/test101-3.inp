@@ -16,6 +16,7 @@
  28              	96.000      	0.000       	                	;
  29              	100.000     	0.000       	                	;
  30              	108.000     	17          	                	;
+ ;30              	108.000     	0          	                	;
  31              	96.000      	0.000       	                	;
  37              	96.000      	0.000       	                	;
 
@@ -23,6 +24,8 @@
 ;ID              	Head        	Pattern         
  1               	196         	                	;
  32              	100.000     	                	;
+ 
+ ;30                 108
 
 [TANKS]
 ;ID              	Elevation   	InitLevel   	MinLevel    	MaxLevel    	Diameter    	MinVol      	VolCurve
@@ -123,7 +126,7 @@
 ;Tank            	Model
 
 [TIMES]
- Duration           	0:00 
+ Duration        	0:00 
  Hydraulic Timestep 	1:00 
  Quality Timestep   	0:05 
  Pattern Timestep   	1:00 
@@ -131,7 +134,7 @@
  Report Timestep    	1:00 
  Report Start       	0:00 
  Start ClockTime    	12 am
- Statistic          	NONE
+ ;Report Statistic      	NONE
 
 [REPORT]
  Status             	Full
@@ -139,22 +142,15 @@
  Page               	0
 
 [OPTIONS]
- Units              	GPM
- Headloss           	D-W
- Specific Gravity   	1.000
- Viscosity          	1
- Trials             	100
- Accuracy           	0.0100
- CHECKFREQ          	1
- MAXCHECK           	100
- DAMPLIMIT          	0
- Unbalanced         	Continue 10
- Pattern            	1
+ Units                  GPM
+ Headloss               D-W
+ ;Demand Model          FH
+ Specific Gravity       1.000
+ Specific Viscosity    	1
+ Trials        	        100
+ Accuracy               0.00100
  Demand Multiplier  	1.0
  Emitter Exponent   	0.5
- Quality            	None mg/L
- Diffusivity        	1
- Tolerance          	0.01
 
 [COORDINATES]
 ;Node            	X-Coord         	Y-Coord
