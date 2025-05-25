@@ -26,6 +26,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import networkx as nx
 import wntr
+import time
 
 # convert networkx graph to .inp file
 
@@ -144,41 +145,57 @@ def convert_wntr_to_nx(wn, results=None):
     
     return G
 
-def run_epanet_simulation(wn, static = True):
-
+def run_epanet_simulation(wn, static=False):  # Changed default to False
     """
     Run EPANET simulation on the water network model.
 
     Parameters:
     wn (wntr.network.WaterNetworkModel): The water network model.
-    duration (int): Duration of the simulation in seconds.
-    time_step (int): Time step for the simulation in seconds.
-
     static (bool): If True, run a steady state simulation. If False, run a dynamic simulation.
 
     Returns:
-    wntr.sim.EpanetSimulator: The EPANET simulator object.
+    wntr.sim.SimulationResults: The EPANET simulation results.
     """
 
     print("Running EPANET simulation...")
 
     # Initialise simulation parameters
-    wn.options.time.duration = 0  # Steady state simulation
-    wn.options.time.hydraulic_timestep = 3600
-    wn.options.time.pattern_timestep = 3600
-    wn.options.time.report_timestep = 3600
+    if static:
+        wn.options.time.duration = 0  # Steady state simulation
+    else:
+        wn.options.time.duration = 24 * 3600  # 24 hours in seconds
+        
+    wn.options.time.hydraulic_timestep = 3600  # 1 hour in seconds
+    wn.options.time.pattern_timestep = 3600    # 1 hour in seconds
+    wn.options.time.report_timestep = 3600     # 1 hour in seconds
 
-    # # Set hydraulic options for better convergence
-    # wn.options.hydraulic.accuracy = 0.01  # Set accuracy for hydraulic calculations
-    # wn.options.hydraulic.headloss = 'H-W'  # Hazen-Williams
-    # wn.options.hydraulic.demand_model = 'DDA'  # Demand-driven analysis is more stable
-
-    # print(f"Options set for simulation: {wn.options}")
+    # Set hydraulic options for better convergence
+    wn.options.hydraulic.accuracy = 0.01
+    wn.options.hydraulic.headloss = 'H-W'  # Hazen-Williams
+    wn.options.hydraulic.demand_model = 'DDA'  # Demand-driven analysis is more stable
+    
+    # Ensure energy calculations are enabled
+    wn.options.energy.global_efficiency = 75.0
+    wn.options.energy.global_price = 0.26  # £/kWh
+    
+    # Debug pump information
+    print(f"Network has {len(wn.pump_name_list)} pumps: {wn.pump_name_list}")
+    
+    start_time = time.time()
 
     # Create a simulator object
     sim = wntr.sim.EpanetSimulator(wn)
-
     results = sim.run_sim()
+
+    end_time = time.time()
+    run_time = end_time - start_time
+    print(f"Hydraulic simulation completed in {run_time:.4f} seconds")
+    
+    # Debug energy results
+    if 'energy' in results.link:
+        print(f"Energy data available for links: {results.link['energy'].columns}")
+    else:
+        print("No energy data in results - check pump definitions and patterns")
 
     return results
 

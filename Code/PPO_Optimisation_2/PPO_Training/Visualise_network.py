@@ -1,5 +1,5 @@
 """
-This file takes a water network model (wntr) as input and displays the network, with markers outlining the reservoirs, tanks, junctions, pumps and valves. Pressure at the valves is translated to a colour map. Headlosses are displayed on the pipes and values normalised to a colour map. The network can be displayed in either 2D or 3D with the elevation of the nodes and pipes. The network is saved as a .png file in the same directory as the input file. The function also returns the figure object for further manipulation if needed.
+This file takes a water network model (wntr) as input and displays the network, with markers outlining the reservoirs, tanks, junctions, pumps and valves. Pressure at the valves is translated to a colour map. The network can be displayed in either 2D or 3D with the elevation of the nodes and pipes. The network is saved as a .png file in the same directory as the input file. The function also returns the figure object for further manipulation if needed.
 """
 
 # Import necessary libraries
@@ -16,7 +16,7 @@ from mpl_toolkits.mplot3d import Axes3D
 
 def visualise_network(wn, results, title, save_path, mode='3d', show = False):
     """
-    Visualise the water distribution network with pressure and headloss maps.
+    Visualise the water distribution network with pressure maps.
 
     Parameters:
     wn (wntr.network.WaterNetworkModel): The water network model.
@@ -57,7 +57,6 @@ def visualise_network(wn, results, title, save_path, mode='3d', show = False):
     # Extract data from results
     if results:
         pressures = results.node['pressure'].iloc[0].to_dict()
-        headlosses = results.link['headloss'].iloc[0].to_dict()
 
     # Get node lists by type
     reservoirs = wn.reservoir_name_list
@@ -102,26 +101,8 @@ def visualise_network(wn, results, title, save_path, mode='3d', show = False):
         max_pressure = np.max(list(pressures.values()))
         cbar.set_ticks([min_pressure, max_pressure])
         cbar.set_ticklabels([f"{min_pressure:.2f}", f"{max_pressure:.2f}"])
-
-        # Create a color map for headlosses
-        headloss_norm = Normalize(vmin=np.min(list(headlosses.values())), vmax=np.max(list(headlosses.values())))
-        headloss_cmap = plt.get_cmap('plasma')
-        headloss_colors = {link: headloss_cmap(headloss_norm(value)) for link, value in headlosses.items()}
-
-        # Create a ScalarMappable for the headloss color map
-        headloss_sm = ScalarMappable(cmap=headloss_cmap, norm=headloss_norm)
-        headloss_sm.set_array([])  # Only needed for colorbar
-        
-        # Create a colorbar for headloss
-        cbar_headloss = plt.colorbar(headloss_sm, ax=ax, shrink=0.5)
-        cbar_headloss.set_label('Headloss (m)')
-        min_headloss = np.min(list(headlosses.values()))
-        max_headloss = np.max(list(headlosses.values()))
-        cbar_headloss.set_ticks([min_headloss, max_headloss])
-        cbar_headloss.set_ticklabels([f"{min_headloss:.2f}", f"{max_headloss:.2f}"])
     else:
         pressure_colors = {}
-        headloss_colors = {}
 
     # Plot nodes with unique markers and colours
     legend_handles = []
@@ -170,7 +151,7 @@ def visualise_network(wn, results, title, save_path, mode='3d', show = False):
                     legend_handles.append(scatter)
                     legend_labels.append(node_type.capitalize())
 
-    # Plot pipes with headloss colors
+    # Plot pipes
     # Get min/max diameters for line width scaling
     pipe_diameters = [wn.get_link(pipe).diameter for pipe in pipes]
     min_diam = min(pipe_diameters) if pipe_diameters else 0
@@ -194,22 +175,19 @@ def visualise_network(wn, results, title, save_path, mode='3d', show = False):
             # Normalize width between 1 and 3
             width = 1 + 2 * ((diameter - min_diam) / diam_range) if diam_range != 0 else 1
             
-            # Get color from headloss dictionary
-            pipe_color = headloss_colors[pipe] if pipe in headloss_colors else 'gray'
-            
-            # Plot the pipe
+            # Plot the pipe with a standard gray color
             if mode == '3d':
                 # 3D pipe plot
                 ax.plot([start_pos[0], end_pos[0]], 
                         [start_pos[1], end_pos[1]], 
                         [start_elev, end_elev], 
-                        color=pipe_color, 
+                        color='gray', 
                         linewidth=width)
             else:
                 # 2D pipe plot
                 ax.plot([start_pos[0], end_pos[0]], 
                         [start_pos[1], end_pos[1]], 
-                        color=pipe_color, 
+                        color='gray', 
                         linewidth=width)
                 
     # Plot pump connections with a distinct appearance
@@ -267,8 +245,8 @@ def visualise_network(wn, results, title, save_path, mode='3d', show = False):
     # Adjust layout and save
     plt.tight_layout()
     plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    # plt.show()
-    # plt.close(figure)
+    if show:
+        plt.show()
     
     return figure
 
