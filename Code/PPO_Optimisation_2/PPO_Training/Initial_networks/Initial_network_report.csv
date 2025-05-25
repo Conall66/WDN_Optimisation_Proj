@@ -1,0 +1,12 @@
+file_name,flow_units,pressure_units,headloss_formula,negative_pressure_count,negative_headloss_count
+anytown-3,GPM,,H-W,20,0
+hanoi-3,CMH,,H-W,0,0
+mod_anytown-3a,GPM,,H-W,0,0
+6848-68nodes,LPS,,H-W,0,0
+Elhay-ZeroFlow,LPS,,H-W,0,0
+Gorev2,LPS,,H-W,0,0
+noflow,LPS,,H-W,0,0
+sampletown,GPM,,H-W,0,0
+st-net3-3,LPS,,H-W,0,0
+test101-3,GPM,,D-W,3,0
+todinitest,LPS,,H-W,0,0

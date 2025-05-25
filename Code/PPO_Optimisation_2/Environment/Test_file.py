@@ -212,11 +212,11 @@ def generate_test_wntr_model():
 # Generate random lobster graph and convert into wntr model
 def generate_test_lobster_wntr():
 
-    G = nx.random_graphs.random_lobster(10, 0.5, 0.2) # num nodes, proba of adding edge to backbone, prob of adding edge one level beyond
+    G = nx.random_graphs.random_lobster(10, 0.5, 0.5) # num nodes, proba of adding edge to backbone, prob of adding edge one level beyond
     # Assign positions to nodes based on position in G
     pos = nx.spring_layout(G)
     # Scale positions to fit in a 100x100 grid
-    pos = {node: (x * 100, y * 100) for node, (x, y) in pos.items()}
+    pos = {node: (x * 1000, y * 1000) for node, (x, y) in pos.items()}
 
     # Assing node types
     centrality = nx.betweenness_centrality(G)
@@ -229,7 +229,7 @@ def generate_test_lobster_wntr():
     wn = wntr.network.WaterNetworkModel()
 
     # Create elevation map
-    elevation_map, peaks = generate_elevation_map(area_size=(1000, 1000),
+    elevation_map, peaks = generate_elevation_map(area_size=(1100, 1100),
                                                   elevation_range=(0, 100), 
                                                   num_peaks=2, 
                                                   landscape_type='hilly')
@@ -321,7 +321,7 @@ if __name__ == "__main__":
     # test_hydraulic_model(file_path)
 
     script = os.path.dirname(__file__)
-    file_path = os.path.join(script, 'Modified_initial_networks', 'hanoi-3_modified.inp')
+    file_path = os.path.join(script, 'Imported_networks', 'epanet-example-networks', 'epanet-tests', 'exeter', 'wolf-3.inp')
     # check file path exists
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"File {file_path} does not exist.")
