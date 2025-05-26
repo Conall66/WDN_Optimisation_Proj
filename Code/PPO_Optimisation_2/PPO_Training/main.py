@@ -47,7 +47,7 @@ for file in os.listdir(initial_networks_folder):
         # Extract final key from dictionary of perforamcen metrics
         # print(f"Performance metrics for {file}: {performance_metrics}")
         print(f"Final energy consumption: {performance_metrics['total_energy_consumption']} kWh")
-        # Visualise the network
+        # Visualise the network/save the plots to Plots folder
         plots_path = os.path.join(script, 'Plots', 'Initial_' + file.replace('.inp', '.png'))
         visualise_network(wn = wn, results = results, title = f"Initial Network: {file}", save_path = plots_path, mode = '2d', show = False)
 

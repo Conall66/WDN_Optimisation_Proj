@@ -19,162 +19,109 @@ from wntr.graphics.network import plot_network
 
 from Hydraulic_Model import run_epanet_simulation, evaluate_network_performance
 
-# Function to convert units if they are not metric
-def convert_units(inp_file, out_file):
-    """
-    Function takes .inp file as input, chceks units and convert them to metric if necessary
-    
-    Parameters:
-    inp_file (str): Path to the input .inp file
-    out_file (str): Path to the output .inp file
+# In Modify_nets.py
 
-    Returns:
-    None
-    
-    """
-    wn = wntr.network.WaterNetworkModel(inp_file)
-    # Check if the units are not metric
+# Import necessary libraries
+import os
+import wntr
+from wntr.network.io import write_inpfile
+from Hydraulic_Model import run_epanet_simulation, evaluate_network_performance
+
+# The convert_units and map_pipe_diameters functions are correct and do not need changes.
+def convert_units(wn):
     units = wn.options.hydraulic.inpfile_units
-
-    print(f"Current units in the network: {units}")
-
     if units != 'CMH':
-        # Convert units to metric
         wn.options.hydraulic.inpfile_units = 'CMH'
-        # wn.options.hydraulic.inpfile_pressure_units = 'M'
         units = 'CMH'
-        
-    # Save the modified network to a new file
-    write_inpfile(wn, out_file)
-
     return wn, units
 
-# Function to map pipe diameters to closest in the discrete set
-
-def map_pipe_diameters(inp_file, discrete_diameters):
-    """
-    Function to map pipe diameters in the inp_file to the closest diameter in the discrete_diameters set.
-    
-    Parameters:
-    inp_file (str): Path to the input .inp file
-    discrete_diameters (list): List of discrete pipe diameters to map to
-
-    Returns:
-    None
-    
-    """
-    wn = wntr.network.WaterNetworkModel(inp_file)
-    pipes = wn.pipes
-    
+def map_pipe_diameters(wn, discrete_diameters):
     for pipe_id, pipe in wn.pipes():
         original_diameter = pipe.diameter
         closest_diameter = min(discrete_diameters, key=lambda x: abs(x - original_diameter))
         pipe.diameter = closest_diameter
-    
-    # Save the modified network
-    write_inpfile(wn, inp_file)
+    return wn
 
-def test_hydraulic_analysis(inp_file):
+def enable_pumps(wn):
     """
-    Function to run a hydraulic analysis on the inp_file and return the results.
-    
-    Parameters:
-    inp_file (str): Path to the input .inp file
-
-    Returns:
-    results: Hydraulic analysis results
-    
+    This function adds time-based CONTROLS for each pump to modulate their
+    speed according to a predefined pattern. This is the robust method
+    that ensures the logic is written to the final .inp file.
     """
-    wn = wntr.network.WaterNetworkModel(inp_file)
-
-    wn.options.time.duration = 24*3600  # Steady state simulation
-    wn.options.time.hydraulic_timestep = 3600
-    wn.options.time.pattern_timestep = 3600
-    wn.options.time.report_timestep = 3600
-
-    # extract just file name from path
-    file_name = os.path.basename(inp_file)
-
-    try:
-        start_time = time.time()
-        sim = wntr.sim.EpanetSimulator(wn)
-        results = sim.run_sim()
-        end_time = time.time()
-        run_time = end_time - start_time
-        print(f"Hydraulic simulation completed for network: {file_name}")
-        print(f"Run time for hydraulic simulation: {run_time:.4f} seconds")
-    except Exception as e:
-        print(f"Error running hydraulic simulation: {e}")
-        return None
+    # print("Enabling pumps with time-based speed controls...")
+    pump_pattern = [0.8, 0.7, 0.7, 0.6, 0.6, 0.7,  # Hours 0-5
+                    1.0, 1.0, 1.0, 1.0, 1.0, 1.0,   # Hours 6-11
+                    1.2, 1.2, 1.2, 1.3, 1.3, 1.2,   # Hours 12-17
+                    1.1, 1.0, 1.0, 0.9, 0.8, 0.8]   # Hours 18-23
     
-    return results
+    wn.add_pattern('pump_pattern', pump_pattern)
 
-# Example run
+    # Loop through each pump in the network
+    pump_name = wn.pump_name_list[0]
+    pump_1 = wn.get_link(pump_name)
+    pump_1.speed_pattern_name = 'pump_pattern'
+
+    # Add a base-speed to pump 1
+    pump_1.base_speed = 1.0  # Set the base speed to 1.0 (100%)
+    
+    return wn
 
 if __name__ == "__main__":
     
-    # Define input file names
     files = ['anytown-3.inp', 'hanoi-3.inp']
     script = os.path.dirname(__file__)
 
-    # Enable pumps with realistic curves for the Anytown network
-    # anytown_file = os.path.join(script, 'Initial_networks', 'exeter', 'anytown-3.inp')
-    # enable_pumps_with_curve(anytown_file)
-
-    # First test hydraulic analysis on initial networks
-    for file in files:
-        file_path = os.path.join(script, 'Initial_networks', 'exeter', file)
-        # Run hydraulic anlaysis
-        try:
-            wn = wntr.network.WaterNetworkModel(file_path)
-            results = run_epanet_simulation(wn)
-            performance_metrics = evaluate_network_performance(wn, results)
-            # Extract energy consumption value from initial network
-            energy_consumption = performance_metrics['total_energy_consumption']
-            print(f"Initial energy consumption for {file}: {energy_consumption} kWh")
-        except Exception as e:
-            print(f"Error running hydraulic analysis for {file}: {e}")
-            continue
-    
     print("----------------------------------")
-
-    # --------------------------------
-
-    # Test on imported anytown network
-    # new_file = os.path.join(script, 'Initial_networks', 'Anytown.inp')
-    # try:
-    #     wn = wntr.network.WaterNetworkModel(new_file)
-    #     results = run_epanet_simulation(wn)
-    #     performance_metrics = evaluate_network_performance(wn, results)
-    #     # Extract energy consumption value from initial network
-    #     energy_consumption = performance_metrics['total_energy_consumption']
-    #     print(f"Initial energy consumption for Anytown.inp: {energy_consumption} kWh")
-    # except Exception as e:
-    #     print(f"Error running hydraulic analysis for {file}: {e}")
-
-    # print("----------------------------------")
 
     for file in files:
         file_path = os.path.join(script, 'Initial_networks', 'exeter', file)
         save_path = os.path.join(script, 'Modified_nets', file)
-    
-        # Convert units
-        wn, units = convert_units(file_path, save_path)
-
-        # if 'anytown' in file.lower():
-        #     print(f"Adding pump curves to {file}")
-        #     wn = add_pump_curves_to_anytown(save_path)
-
-        # Map pipe diameters to a discrete set
-        discrete_diameters = [0.3048, 0.4064, 0.508, 0.609, 0.762, 1.016]
-        map_pipe_diameters(save_path, discrete_diameters)
-
-        # If anytown, add pump pattern to accumulate energy consumption
-
-        # Test hydraulic analysis
-        results = test_hydraulic_analysis(save_path)
-        # Display the results in graph form (node pressure added to the network)
         
-        # Print the units to verify
-        print(f"Units of the network: {units}")
+        print(f"\nProcessing network: {file}")
+
+        # 1. Load the model from the original file
+        wn = wntr.network.WaterNetworkModel(file_path)
     
+        # 2. Convert units in memory
+        wn, units = convert_units(wn)
+
+        # 3. Apply modifications if it's the Anytown network
+        # if 'anytown' in file.lower():
+        #     # Add time-based controls for pump speed
+        #     wn = enable_pumps(wn)
+            
+            # Manually assign the efficiency curve to each pump
+            # print("Assigning efficiency curves to pumps...")
+            # efficiency_curve = wn.get_curve('E1')
+            # for pump_name in wn.pump_name_list:
+            #     pump = wn.get_link(pump_name)
+            #     pump.efficiency = efficiency_curve
+            #     # print(f"  > Set efficiency for pump '{pump_name}' to curve '{pump.efficiency.name}'")
+
+        # 4. Map pipe diameters in memory
+        print("Mapping pipe diameters...")
+        discrete_diameters = [0.3048, 0.4064, 0.508, 0.609, 0.762, 1.016]
+        wn = map_pipe_diameters(wn, discrete_diameters)
+
+        # Assign global values here for the network
+        wn.options.hydraulic.demand_model = 'DDA'
+        wn.options.hydraulic.headloss = 'H-W'
+        wn.options.hydraulic.accuracy = 0.001
+        wn.options.energy.global_efficiency = 75.0
+        wn.options.energy.global_price = 0.26  # £/kWh
+
+        # 5. Run simulation on the fully modified model object
+        results = run_epanet_simulation(wn)
+        
+        # 6. Evaluate and print performance metrics
+        performance_metrics = evaluate_network_performance(wn, results)
+        energy_consumption = performance_metrics['total_energy_consumption']
+        pump_cost = performance_metrics['total_pump_cost']
+        print(f"Total energy consumption: {energy_consumption:.2f} kWh/day")
+        print(f"Total pump cost: £{pump_cost:.2f}/day")
+        # print(f"Modified energy consumption for {file}: {energy_consumption:.2f} kWh")
+        # print(f"Units of the network: {units}")
+
+        # 7. Write the final, fully modified model to the file
+        # print(f"Saving modified network to: {save_path}")
+        write_inpfile(wn, save_path)

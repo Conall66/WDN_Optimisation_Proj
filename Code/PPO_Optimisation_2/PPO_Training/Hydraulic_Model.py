@@ -27,6 +27,7 @@ import matplotlib.pyplot as plt
 import networkx as nx
 import wntr
 import time
+import wntr.metrics.economic as economics
 
 # convert networkx graph to .inp file
 
@@ -192,10 +193,11 @@ def run_epanet_simulation(wn, static=False):  # Changed default to False
     print(f"Hydraulic simulation completed in {run_time:.4f} seconds")
     
     # Debug energy results
-    if 'energy' in results.link:
-        print(f"Energy data available for links: {results.link['energy'].columns}")
-    else:
-        print("No energy data in results - check pump definitions and patterns")
+    """Energy data is never added to the results"""
+    # if 'energy' in results.link:
+    #     print(f"Energy data available for links: {results.link['energy'].columns}")
+    # else:
+    #     print("No energy data in results - check pump definitions and patterns")
 
     return results
 
@@ -225,32 +227,63 @@ def evaluate_network_performance(wn, results, final_time = 3600):
     # Calculate pressure deficit
     pressure_deficit = {}
     for node in wn.junction_name_list:
-        # pressure = results.node['pressure'][node][final_time] # Returns pressure at t = 0 and t = T
         pressure = np.mean(results.node['pressure'][node])
-        # Extract the last values of pressure
-        # print(f"Pressure at node {node}: {pressure}")
         pressure_deficit[node] = max(0, min_pressure - pressure)  # Assuming a minimum pressure of 20 m
 
     # Calculate head loss
     headlosses = {}
     for pipe in wn.pipe_name_list:
-        # headloss = results.link['headloss'][pipe][final_time]
         headloss = np.mean(results.link['headloss'][pipe])
         headlosses[pipe] = headloss
 
-    # Calculate total energy consumption
+    # Calculate total energy consumption using global efficiency
     total_energy_consumption = 0
-    if wn.pump_name_list:  # Check if there are any pumps
-        for pump_name in wn.pump_name_list:
-            if pump_name in results.link.keys() and 'energy' in results.link:
-                if pump_name in results.link['energy'].columns:
-                    energy_values = results.link['energy'][pump_name].values
-                    total_energy_consumption += np.sum(energy_values)
+    timestep_hours = wn.options.time.hydraulic_timestep / 3600.0
+    
+    # Use the global efficiency setting (not efficiency curves)
+    efficiency = wn.options.energy.global_efficiency / 100.0  # Convert from percentage to decimal
+    
+    for pump_name in wn.pump_name_list:
+        pump = wn.get_link(pump_name)
+        start_node = pump.start_node_name
+        end_node = pump.end_node_name
+        
+        # For each timestep, calculate energy
+        for t in results.node['head'].index:
+            # Get flow at this timestep
+            flow = results.link['flowrate'][pump_name][t]
+
+            # Print flowrate
+            # print(f"Flow rate for pump {pump_name} at time {t}: {flow} L/s")
+            
+            # Only calculate energy when pump is running (flow > 0)
+            if flow > 0:
+                # Calculate head difference across the pump
+                head_start = results.node['head'][start_node][t]
+                head_end = results.node['head'][end_node][t]
+                head_diff = head_end - head_start
+                
+                # Calculate power in kW: P = ρgQH/η/1000
+                # Where ρ = 1000 kg/m³, g = 9.81 m/s²
+                power_kw = (1000 * 9.81 * flow * head_diff) / (efficiency * 1000)
+                
+                # Calculate energy in kWh: E = P × Δt
+                energy_kwh = power_kw * timestep_hours
+                total_energy_consumption += energy_kwh
+
+    # Print total energy consumption
+    # print(f"Total energy consumption: {total_energy_consumption:.2f} kWh")
+    
+    # Calculate cost if needed
+    price_per_kwh = wn.options.energy.global_price
+
+    # print(f"Price per kWh: {price_per_kwh} £/kWh")
+
+    total_pump_cost = total_energy_consumption * price_per_kwh if price_per_kwh else 0
 
     return {
         'pressure_deficit': pressure_deficit,
         'headlosses': headlosses,
-        'total_energy_consumption': total_energy_consumption
+        'total_energy_consumption': total_energy_consumption,
+        'total_pump_cost': total_pump_cost
     }
-
-# Test the hydraulic model
