@@ -89,12 +89,12 @@ def generate_demand_curves(time_steps, plot=False):
     actual_end_year = 2050
     
     # Add padding for smoothing (2 years on each side)
-    padding = 4
-    start_year = actual_start_year - padding
-    end_year = actual_end_year + padding
+    # padding = 4
+    # start_year = actual_start_year - padding
+    # end_year = actual_end_year + padding
     
     # Generate points with padding
-    points = np.linspace(start_year, end_year, time_steps)
+    points = np.linspace(actual_start_year, actual_end_year, time_steps)
     
     # Generate demand curves for each scenario
     final_growth_vals = [1.5, 1.65, 1.8]  # Convert percentages to multipliers
@@ -148,5 +148,8 @@ def generate_demand_curves(time_steps, plot=False):
 
 if __name__ == "__main__":
     # Generate demand curves
-    time_steps = 100  # Number of time steps from 2025 to 2050
-    generate_demand_curves(time_steps, plot = True)
+    time_steps = 50  # Number of time steps from 2025 to 2050
+    demand_curves = generate_demand_curves(time_steps, plot = True)
+    # Print the length of each of the demand curves
+    for i, curve in enumerate(demand_curves):
+        print(f"Demand curve {i+1} length: {len(curve)}")
