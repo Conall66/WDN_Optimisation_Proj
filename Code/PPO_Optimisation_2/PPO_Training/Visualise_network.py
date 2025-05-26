@@ -357,7 +357,7 @@ def visualise_network(wn, results, title, save_path, mode='3d', show = False):
                         color='gray', 
                         linewidth=width)
                 
-    # Plot pump connections with a distinct appearance
+    pump_line = None  # Variable to store a line object for the legend
     for pump_name in pumps:
         pump = wn.get_link(pump_name)
         start_node = pump.start_node_name
@@ -371,28 +371,28 @@ def visualise_network(wn, results, title, save_path, mode='3d', show = False):
             
             # Use a dashed red line for pumps to make them stand out
             if mode == '3d':
-                ax.plot([start_pos[0], end_pos[0]], 
+                pump_line = ax.plot([start_pos[0], end_pos[0]], 
                         [start_pos[1], end_pos[1]], 
                         [start_elev, end_elev], 
                         color='red', 
                         linewidth=2,
                         linestyle='--',
-                        zorder=6)
-                # Add a label to identify the pump
-                mid_x = (start_pos[0] + end_pos[0]) / 2
-                mid_y = (start_pos[1] + end_pos[1]) / 2
-                mid_z = (start_elev + end_elev) / 2
-                ax.text(mid_x, mid_y, mid_z, f"Pump {pump_name}", 
-                        color='black', fontsize=8, 
-                        bbox=dict(facecolor='white', alpha=0.7),
-                        zorder=15)
+                        zorder=6)[0]  # Get the Line2D object
+                # # Add a label to identify the pump
+                # mid_x = (start_pos[0] + end_pos[0]) / 2
+                # mid_y = (start_pos[1] + end_pos[1]) / 2
+                # mid_z = (start_elev + end_elev) / 2
+                # ax.text(mid_x, mid_y, mid_z, f"Pump {pump_name}", 
+                #         color='black', fontsize=8, 
+                #         bbox=dict(facecolor='white', alpha=0.7),
+                #         zorder=15)
             else:
-                ax.plot([start_pos[0], end_pos[0]], 
+                pump_line = ax.plot([start_pos[0], end_pos[0]], 
                         [start_pos[1], end_pos[1]], 
                         color='red', 
                         linewidth=2,
                         linestyle='--',
-                        zorder=6)
+                        zorder=6)[0]  # Get the Line2D object
                 
                 # Add a label to identify the pump
                 mid_x = (start_pos[0] + end_pos[0]) / 2
@@ -401,6 +401,11 @@ def visualise_network(wn, results, title, save_path, mode='3d', show = False):
                         color='black', fontsize=8, 
                         bbox=dict(facecolor='white', alpha=0.7),
                         zorder=15)
+
+    # Add pump line to legend if pumps exist
+    if pump_line is not None:
+        legend_handles.append(pump_line)
+        legend_labels.append('Pump Connection')
 
     # Set the view angle for 3D mode
     if mode == '3d':
@@ -411,7 +416,8 @@ def visualise_network(wn, results, title, save_path, mode='3d', show = False):
 
     # Adjust layout and save
     plt.tight_layout()
-    plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
     if show:
         plt.show()
     

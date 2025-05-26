@@ -76,13 +76,15 @@ def identify_fringe_nodes(wn):
     return [node for node, _ in fringe_nodes]
 
 # For each network, determine a set of candidate sprawl positions and connections
-def generate_final_sprawl_net(wn, net, sprawl_percentage=0.05, min_dist = 750, max_dist = 2000):
+def generate_final_sprawl_net(start_net, net, sprawl_percentage=0.05, min_dist = 750, max_dist = 2000):
     """
     This function generates a final sprawling network by adding 5% more nodes to the existing network.
     The new nodes are added at random positions and connected to the nearest existing node.
     """
 
     # wn = wntr.network.WaterNetworkModel(wn)
+
+    wn = deepcopy(start_net)  # Create a copy of the start network to avoid modifying it directly
 
     nodes_to_add = int(len(wn.nodes) * sprawl_percentage)
     # fringe_nodes = identify_fringe_nodes(wn)
@@ -97,7 +99,7 @@ def generate_final_sprawl_net(wn, net, sprawl_percentage=0.05, min_dist = 750, m
             min_y = min(wn.nodes[node_id].coordinates[1] for node_id in wn.junction_name_list)
             fringe_nodes = identify_fringe_nodes(wn)
 
-            print(f"Fringe nodes sorted by distance: {[node for node in fringe_nodes]}")
+            # print(f"Fringe nodes sorted by distance: {[node for node in fringe_nodes]}")
 
             # fringe_node = random.choice(fringe_nodes)
             new_node_id = f"{len(wn.nodes) + i + 1}"
@@ -175,13 +177,13 @@ def generate_final_sprawl_net(wn, net, sprawl_percentage=0.05, min_dist = 750, m
                 connecting_node = wn.get_node(nearest_node)
                 connecting_node_id = connecting_node.name
 
-                print(f"Connecting new node {new_node_id} to nearest node {connecting_node_id}")
+                # print(f"Connecting new node {new_node_id} to nearest node {connecting_node_id}")
 
                 # if nearest_nodes[j].name != new_node_id:
                 new_pipe_id = f"pipe_{new_node_id}_{connecting_node_id}"
 
                 length = calc_distance(wn.get_node(new_node_id), connecting_node, wn)
-                wn.add_pipe(new_pipe_id, new_node_id, connecting_node_id, length = length, diameter=0.0, roughness=0.0, minor_loss = 0) # Start with 0 diameter so agent learns to allocate it
+                wn.add_pipe(new_pipe_id, new_node_id, connecting_node_id, length = length, diameter=0.01, roughness=20.0, minor_loss = 0) # Start with 0 diameter so agent learns to allocate it
 
     elif net == 'hanoi':
         # Identify start and end nodes
@@ -210,7 +212,7 @@ def generate_final_sprawl_net(wn, net, sprawl_percentage=0.05, min_dist = 750, m
                 new_pipe_id = f"pipe_{new_node_id}_{prev_node}"
                 print(f"Adding pipe {new_pipe_id} from {new_node_id} to {prev_node}")
                 length = calc_distance(wn.get_node(new_node_id), wn.get_node(prev_node), wn)
-                wn.add_pipe(new_pipe_id, new_node_id, prev_node, length=length, diameter=0.0, roughness=0.0, minor_loss=0)  # Start with 0 diameter so agent learns to allocate it
+                wn.add_pipe(new_pipe_id, new_node_id, prev_node, length=length, diameter=0.01, roughness=20.0, minor_loss=0)  # Start with 0 diameter so agent learns to allocate it
 
                 # Update the previous node to be the new node
                 prev_node = new_node_id
@@ -223,88 +225,123 @@ def generate_final_sprawl_net(wn, net, sprawl_percentage=0.05, min_dist = 750, m
                 # Add a pipe to the end node
                 new_pipe_id = f"pipe_{new_node_id}_{end_node}"
                 length = calc_distance(wn.get_node(new_node_id), wn.get_node(end_node), wn)
-                wn.add_pipe(new_pipe_id, new_node_id, end_node, length=length, diameter=0.0, roughness=0.0, minor_loss=0)
+                wn.add_pipe(new_pipe_id, new_node_id, end_node, length=length, diameter=0.01, roughness=20.0, minor_loss=0)
                 # Add a pipe to the previous node
                 new_pipe_id = f"pipe_{new_node_id}_{prev_node}"
                 length = calc_distance(wn.get_node(new_node_id), wn.get_node(prev_node), wn)
-                wn.add_pipe(new_pipe_id, new_node_id, prev_node, length=length, diameter=0.0, roughness=0.0, minor_loss=0)
+                wn.add_pipe(new_pipe_id, new_node_id, prev_node, length=length, diameter=0.01, roughness=20.0, minor_loss=0)
                 
     return wn
 
 # Given start and end networks, determine which update steps add new nodes
-def generate_transition_states(start_wn, end_wn, scenario, num_steps = 50, net_save_path = None, plot_save_path = None):
-    # Divide the number of nodes difference between the 2 states by the number of steps to determine how many nodes to add at each step - accumulate and when integer value reached new node added. Store these networks in the modified nets folder
+def generate_transition_states(start_wn, end_wn, scenario, num_steps=50, net_save_path=None, plot_save_path=None):
+    # Calculate node differences
     start_nodes = len(start_wn.nodes)
     end_nodes = len(end_wn.nodes)
     node_diff = end_nodes - start_nodes
     nodes_per_step = node_diff / num_steps
 
-    # From both the hanoi and anytown networks, extract the junctions and pipes added in the end_wn
-    start_junctions = set(start_wn.junctions())
-    end_junctions = set(end_wn.junctions())
-    added_junctions = sorted(end_junctions - start_junctions) # This ensure the junctions are sorted by their ID, with the lowest ID first
+    # print(f"Scenario: {scenario}")
+    # print(f"Length of start nodes : {start_nodes}")
+    # print(f"Length of end nodes : {end_nodes}")
+    # print(f"Total number of steps: {num_steps}")
+    # print(f"Node difference: {node_diff}")
+    # print(f"Nodes to add per step: {nodes_per_step:.4f} (Total nodes to add: {node_diff})")
     
-    # For each node in added_junctions, identify the list of pipes connected to it and store
-    added_pipes = []
-    for junction, junction_data in added_junctions:
-        junction_id = junction_data.name
-        pipes = start_wn.get_node(junction_id).pipes
-        for pipe in pipes:
-            pipe_data = start_wn.get_pipe(pipe)
-            added_pipes.append((pipe_data.name, pipe_data))
+    # Identify added junctions (using names rather than data)
+    start_junction_names = set(start_wn.junction_name_list)
+    end_junction_names = set(end_wn.junction_name_list)
+    added_junction_names = sorted(end_junction_names - start_junction_names)
     
-    prev_network = start_wn
-    add_nodes = 0 # This value updates with each step, and when the value breaches 1 a new node is added and 1 subtracted from the value
-
-    total_initial_demand = 0
-    # Update the demands at each junction
-    for junction, junction_data in start_wn.junctions():
-        total_initial_demand += junction_data.base_demand
-        # Set the base demand to a random value between 0 and 10
-
-    # Generate demand curve and extract value for time step
+    # Map tracking which pipes to add with each junction
+    junction_pipe_map = {j: [] for j in added_junction_names}
+    
+    # Identify new pipes
+    for pipe_name in end_wn.pipe_name_list:
+        if pipe_name not in start_wn.pipe_name_list:
+            pipe = end_wn.get_link(pipe_name)
+            start_node = pipe.start_node_name
+            end_node = pipe.end_node_name
+            
+            # Add this pipe to any new junction it connects to
+            if start_node in added_junction_names:
+                junction_pipe_map[start_node].append(pipe_name)
+            if end_node in added_junction_names:
+                junction_pipe_map[end_node].append(pipe_name)
+    
+    prev_network = deepcopy(start_wn) # In instance 1, this start network should be the initial network
+    add_nodes = 0
+    
+    # Generate demand curve
+    total_initial_demand = sum(j.base_demand for _, j in start_wn.junctions())
     demand_vals = generate_demand_curves(num_steps, plot=False)
-
+    scenario_index = int(scenario.split('_')[-1]) - 1
+    demand_curve = demand_vals[scenario_index]
+    
+    # Track which junctions have been added
+    added_junctions_so_far = set()
+    
     for step in range(num_steps):
-        # Create a new wntr model and add the n
-        new_wn = deepcopy(prev_network)  # Create a copy of the previous network
-        add_nodes += nodes_per_step  # Increment the number of nodes to add
-        while add_nodes >= 1:
-            # Add a new junction and pipe from the added junctions and pipes
-            if added_junctions:
-                new_junction = added_junctions.pop(0)
-                new_wn.add_junction(new_junction[0], elevation=new_junction[1].elevation, base_demand=new_junction[1].base_demand, coordinates=new_junction[1].coordinates)
-            # Iterate through added_pipes to add the pipes connected to the new junction
-            for pipe, pipe_data in added_pipes:
-                if pipe_data.start_node == new_junction[0] or pipe_data.end_node == new_junction[0]:
-                    new_wn.add_pipe(pipe, pipe_data.start_node, pipe_data.end_node, length=pipe_data.length, diameter=pipe_data.diameter, roughness=pipe_data.roughness, minor_loss=pipe_data.minor_loss)
-            add_nodes -= 1  # Subtract 1 from the number of nodes to add
-
-        # Update the demands at each junction
-        scenario_index = int(scenario.split('_')[-1]) - 1  # Extract the scenario index from the scenario name
-        demand_curve = demand_vals[scenario_index]
-        demand_multiplier = demand_curve[step]
+        # Create a copy of the previous network
+        new_wn = deepcopy(prev_network)
         
-        # Calculate total initial demand scaled by the multiplier
-        target_demand = total_initial_demand * demand_multiplier
+        # Determine how many nodes to add in this step
+        add_nodes += nodes_per_step
+        junctions_to_add = []
         
-        # Update demands using the helper function - takes as input the previous network, current network and target demand
+        # Add nodes for this step
+        while add_nodes >= 1 and added_junction_names:
+            junction_name = added_junction_names.pop(0)
+            junctions_to_add.append(junction_name)
+            add_nodes -= 1
+        
+        # Add the junctions for this step
+        for junction_name in junctions_to_add:
+            junction = end_wn.get_node(junction_name)
+            new_wn.add_junction(junction_name, 
+                              elevation=junction.elevation,
+                              base_demand=junction.base_demand,
+                              coordinates=junction.coordinates)
+            added_junctions_so_far.add(junction_name)
+        
+        # Add only pipes where both endpoints exist
+        for junction_name in junctions_to_add:
+            for pipe_name in junction_pipe_map[junction_name]:
+                pipe = end_wn.get_link(pipe_name)
+                start_node = pipe.start_node_name
+                end_node = pipe.end_node_name
+                
+                # Only add pipe if both nodes exist in the network
+                if (start_node in new_wn.node_name_list and 
+                    end_node in new_wn.node_name_list and
+                    pipe_name not in new_wn.link_name_list):
+                    new_wn.add_pipe(pipe_name, 
+                                  start_node, 
+                                  end_node,
+                                  length=pipe.length,
+                                  diameter=pipe.diameter,
+                                  roughness=pipe.roughness,
+                                  minor_loss=pipe.minor_loss)
+        
+        # Update demands
+        target_demand = total_initial_demand * demand_curve[step]
         new_wn = update_demands(prev_network, new_wn, target_demand)
-          
-        # Save the new network to the modified nets folder
+        
+        # Save the new network to file
         if net_save_path:
             new_file_name = f"Step_{step + 1}.inp"
             new_file_path = os.path.join(net_save_path, new_file_name)
             write_inpfile(new_wn, new_file_path)
-            # print(f"Saved network at step {step + 1} to {new_file_path}")
-
-        # Visualise the network and save the plot
-        if plot_save_path and step % 10 == 0:  # Save a plot every 10 steps
+        
+        # Visualize network
+        if plot_save_path and (step + 1) % 10 == 0:
             plot_file_name = f"Step_{step + 1}.png"
             plot_file_path = os.path.join(plot_save_path, plot_file_name)
-            visualise_demands(new_wn, title=f"Step {step + 1} - {scenario}", save_path=plot_file_path, show=False)
-            
-            # print(f"Saved plot at step {step + 1} to {plot_file_path}")
+            visualise_demands(new_wn, title=f"Step {step + 1} - {scenario}", 
+                             save_path=plot_file_path, show=False)
+        
+        # Update previous network for next step
+        prev_network = new_wn
 
 def update_demands(prev_network, current_network, target_demand):
     """
@@ -377,6 +414,8 @@ if __name__ == "__main__":
             inp_file = os.path.join(script, 'Modified_nets', 'hanoi-3.inp')
         
         start_wn = wntr.network.WaterNetworkModel(inp_file)
+
+        print(f"Initial network loaded with {len(start_wn.nodes)} nodes and {len(start_wn.links)} links.")
         
         # Generate a sprawling network and transitionary states
         if scenario.endswith('sprawling_1') or scenario.endswith('sprawling_2') or scenario.endswith('sprawling_3'):
@@ -384,9 +423,10 @@ if __name__ == "__main__":
             # Extract whether network is anytown or hanoi
             network = 'anytown' if 'anytown' in scenario.split('_')[0] else 'hanoi'
             final_wn = generate_final_sprawl_net(start_wn, network, 0.1)
-            # Visualise the sprawling network
-            # plot_network(wn, title=f"Sprawling Network: {scenario}")
-            # Store the sprawlin networks in their scenario folder
+
+            # Check how many nodes were added in final network
+            print(f"Final network has {len(final_wn.nodes)} nodes, added {len(final_wn.nodes) - len(start_wn.nodes)} nodes.")
+
             generate_transition_states(start_wn, final_wn, scenario, num_steps=50, net_save_path=scenario_path, plot_save_path=plot_scenario_path)
 
         elif scenario.endswith('densifying_1') or scenario.endswith('densifying_2') or scenario.endswith('densifying_3'):
@@ -395,6 +435,5 @@ if __name__ == "__main__":
             # Visualise the densifying network
             # plot_network(wn, title=f"Densifying Network: {scenario}")
             # Store the densifying networks in their scenario folder
-            final_wn = start_wn
+            final_wn = deepcopy(start_wn)
             generate_transition_states(start_wn, final_wn, scenario, num_steps=50, net_save_path=scenario_path, plot_save_path=plot_scenario_path)
-            
