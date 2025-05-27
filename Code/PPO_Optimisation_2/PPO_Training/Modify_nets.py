@@ -209,9 +209,9 @@ if __name__ == "__main__":
             
         elif 'hanoi' in file.lower():
             # For Hanoi, convert the reservoir to pump setup
-            wn = convert_reservoir_to_pump(wn, reservoir_name='1')
-            # Assign elevation profile to Hanoi network
-            wn = assign_elevation_profile(wn)
+            # wn = convert_reservoir_to_pump(wn, reservoir_name='1')
+            # # Assign elevation profile to Hanoi network
+            # wn = assign_elevation_profile(wn)
             visualise_network(wn, results = None, title = 'Hanoi mod', save_path = None, mode='3d', show = True)
             
         # 4. Map pipe diameters in memory

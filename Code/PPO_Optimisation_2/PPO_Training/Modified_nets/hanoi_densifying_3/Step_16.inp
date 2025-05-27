@@ -1,52 +1,53 @@
 ; Filename: c:\Users\conal\OneDrive - Imperial College London\Imperial\Masters Project\Git_Sync\WDN_Optimisation_Proj\Code\PPO_Optimisation_2\PPO_Training\Modified_nets\hanoi-3.inp
 ; WNTR: 1.3.2
-; Created: 2025-05-27 03:24:55
+; Created: 2025-05-27 14:40:43
 [TITLE]
 Hanoi example by Fujiwara and Khang, Water Resources Research, 1990
 
 [JUNCTIONS]
 ;ID                      Elevation       Demand Pattern                 
- 2                                  0    924.45300902                            ;
- 3                                  0    884.45300902                            ;
- 4                                  0    164.45300902                            ;
- 5                                  0    759.45300902                            ;
- 6                                  0     1039.453009                            ;
- 7                                  0     1384.453009                            ;
- 8                                  0    584.45300902                            ;
- 9                                  0    559.45300902                            ;
- 10                                 0    559.45300902                            ;
- 11                                 0    534.45300902                            ;
- 12                                 0    594.45300902                            ;
- 13                                 0    974.45300902                            ;
- 14                                 0    649.45300902                            ;
- 15                                 0    314.45300902                            ;
- 16                                 0    344.45300902                            ;
- 17                                 0    899.45300902                            ;
- 18                                 0     1379.453009                            ;
- 19                                 0    94.453009022                            ;
- 20                                 0     1309.453009                            ;
- 21                                 0    964.45300902                            ;
- 22                                 0    519.45300902                            ;
- 23                                 0     1079.453009                            ;
- 24                                 0    854.45300902                            ;
- 25                                 0    204.45300902                            ;
- 26                                 0    934.45300902                            ;
- 27                                 0    404.45300902                            ;
- 28                                 0    324.45300902                            ;
- 29                                 0    394.45300902                            ;
- 30                                 0    394.45300902                            ;
- 31                                 0    139.45300902                            ;
- 32                                 0    839.45300902                            ;
+ 2                                  0    921.96288969                            ;
+ 3                                  0    881.96288969                            ;
+ 4                                  0    161.96288969                            ;
+ 5                                  0    756.96288969                            ;
+ 6                                  0    1036.9628897                            ;
+ 7                                  0    1381.9628897                            ;
+ 8                                  0    581.96288969                            ;
+ 9                                  0    556.96288969                            ;
+ 10                                 0    556.96288969                            ;
+ 11                                 0    531.96288969                            ;
+ 12                                 0    591.96288969                            ;
+ 13                                 0    971.96288969                            ;
+ 14                                 0    646.96288969                            ;
+ 15                                 0    311.96288969                            ;
+ 16                                 0    341.96288969                            ;
+ 17                                 0    896.96288969                            ;
+ 18                                 0    1376.9628897                            ;
+ 19                                 0    91.962889691                            ;
+ 20                                 0    1306.9628897                            ;
+ 21                                 0    961.96288969                            ;
+ 22                                 0    516.96288969                            ;
+ 23                                 0    1076.9628897                            ;
+ 24                                 0    851.96288969                            ;
+ 25                                 0    201.96288969                            ;
+ 26                                 0    931.96288969                            ;
+ 27                                 0    401.96288969                            ;
+ 28                                 0    321.96288969                            ;
+ 29                                 0    391.96288969                            ;
+ 30                                 0    391.96288969                            ;
+ 31                                 0    136.96288969                            ;
+ 32                                 0    836.96288969                            ;
 
 [RESERVOIRS]
 ;ID                                   Head                  Pattern
- 1                                  0                            ;
+ 1                                100                            ;
 
 [TANKS]
 ;ID                              Elevation           Init Level            Min Level            Max Level             Diameter           Min Volume Volume Curve         Overflow            
 
 [PIPES]
 ;ID                   Node1                Node2                              Length             Diameter            Roughness           Minor Loss               Status
+ 1                    1                    2                                100             762             130               0                 Open   ;
  2                    2                    3                               1350             762             130               0                 Open   ;
  3                    3                    4                                900             762             130               0                 Open   ;
  4                    4                    5                               1150             762             130               0                 Open   ;
@@ -83,7 +84,6 @@ Hanoi example by Fujiwara and Khang, Water Resources Research, 1990
 
 [PUMPS]
 ;ID                   Node1                Node2                Properties          
- PUMP_1               1                    2                    POWER    654.0                  ;
 
 [VALVES]
 ;ID                   Node1                Node2                            Diameter Type              Setting           Minor Loss

@@ -160,11 +160,14 @@ def run_epanet_simulation(wn, static=False):  # Changed default to False
 
     print("Running EPANET simulation...")
 
+
     # Initialise simulation parameters
     if static:
         wn.options.time.duration = 0  # Steady state simulation
     else:
-        wn.options.time.duration = 24 * 3600  # 24 hours in seconds
+        wn.options.time.duration = 24 * 3600  # 24 hours - given CMH
+
+    wn.options.hydraulic.inpfile_units = 'CMH'
         
     wn.options.time.hydraulic_timestep = 3600  # 1 hour in seconds
     wn.options.time.pattern_timestep = 3600    # 1 hour in seconds
@@ -217,14 +220,13 @@ def evaluate_network_performance(wn, results, final_time=3600):
     # print("Evaluating network performance...")
 
     min_pressure = wn.options.hydraulic.required_pressure  # Minimum pressure required (in m)
-    critical_pressure = 10.0  # Critical pressure threshold (in m) below which severe penalties apply
 
     # Calculate pressure deficit and collect demand satisfaction data
     pressure_deficit = {}
-    critical_pressure_violations = 0
     total_demand_met = 0
     total_demand_required = 0
     total_pressure = 0
+    critical_pressure_violations = 0
     
     for node in wn.junction_name_list:
         pressure = np.mean(results.node['pressure'][node])
@@ -234,21 +236,20 @@ def evaluate_network_performance(wn, results, final_time=3600):
         if pressure < min_pressure:
             deficit = min_pressure - pressure
             pressure_deficit[node] = deficit
-        
-        # Count critical pressure violations
-        if pressure < critical_pressure:
             critical_pressure_violations += 1
         
         # Calculate demand satisfaction
         node_obj = wn.get_node(node)
         required_demand = node_obj.base_demand
         if required_demand is not None and required_demand > 0:
-            actual_demand = np.mean(results.node['demand'][node])
+            supplied_demand = np.mean(results.node['demand'][node])
             total_demand_required += required_demand
             
             # If pressure is adequate, consider demand met
             if pressure >= min_pressure:
-                total_demand_met += min(actual_demand, required_demand)
+                total_demand_met += min(supplied_demand, required_demand)
+
+    # print(f"Required demand: {total_demand_required}, Met demand: {total_demand_met}")
 
     # Calculate demand satisfaction ratio
     demand_satisfaction_ratio = 1.0
@@ -310,6 +311,24 @@ if __name__ == "__main__":
     example_network_path = os.path.join('Modified_nets', 'anytown-3.inp')
     wn = wntr.network.WaterNetworkModel(example_network_path)
     results = run_epanet_simulation(wn)
+
+    # Print nodal demand values and demand supplied values in a table
+    # demand_data = []
+    # for node, node_data in wn.junctions():
+    #     node_name = node_data.name
+    #     base_demand = node_data.base_demand
+    #     demand_supplied = np.mean(results.node['demand'][node_name])
+    #     pressure = np.mean(results.node['pressure'][node_name])
+    #     demand_data.append({
+    #         'Node': node_name,
+    #         'Base Demand': base_demand,
+    #         'Demand Supplied': demand_supplied,
+    #         'Pressure (m)': pressure
+    #     })
+    # demand_df = pd.DataFrame(demand_data)
+    # print("Nodal Demand and Pressure Data:")
+    # print(demand_df)
+
     performance_metrics = evaluate_network_performance(wn, results)
 
     print(performance_metrics)

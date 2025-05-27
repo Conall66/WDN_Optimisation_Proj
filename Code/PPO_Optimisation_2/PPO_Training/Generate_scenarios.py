@@ -152,7 +152,7 @@ def generate_final_sprawl_net(start_net, net, sprawl_percentage=0.05, min_dist =
             # Determine elevation of the new node based on the nearest node
             nearest_node_id = wn.get_node(nearest_node)
 
-            new_node_elevation = round(nearest_node_id.elevation + random.uniform(-10, 10), 2)
+            new_node_elevation = round(nearest_node_id.elevation + random.uniform(-5, 5), 2)
             wn.add_junction(new_node_id, elevation=new_node_elevation, base_demand=0, coordinates=(x, y))  # Add the new node with the calculated elevation
 
             # Find the next nearest node
