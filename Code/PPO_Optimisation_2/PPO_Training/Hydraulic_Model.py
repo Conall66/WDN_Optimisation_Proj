@@ -201,40 +201,62 @@ def run_epanet_simulation(wn, static=False):  # Changed default to False
 
     return results
 
-def evaluate_network_performance(wn, results, final_time = 3600):
-
+def evaluate_network_performance(wn, results, final_time=3600):
     """
     Evaluate the performance of the water network based on simulation results.
 
     Parameters:
     wn (wntr.network.WaterNetworkModel): The water network model.
     results (wntr.sim.EpanetSimulator): The EPANET simulation results.
+    final_time (int): The final time step to evaluate.
 
     Returns:
-    dict: A dictionary containing the performance metrics.
+    dict: A dictionary containing the performance metrics and reward components.
     """
 
     # print("Evaluating network performance...")
 
     min_pressure = wn.options.hydraulic.required_pressure  # Minimum pressure required (in m)
+    critical_pressure = 10.0  # Critical pressure threshold (in m) below which severe penalties apply
 
-    # Restructure wn.node_name_list so that all junctions come first, followed by reservoirs then tanks
-    junctions = [node for node in wn.node_name_list if wn.get_node(node).node_type == 'residential' or wn.get_node(node).node_type == 'commercial']
-    reservoirs = [node for node in wn.node_name_list if wn.get_node(node).node_type == 'Reservoir']
-    tanks = [node for node in wn.node_name_list if wn.get_node(node).node_type == 'Tank']
-    nodes = junctions + reservoirs + tanks
-
-    # Calculate pressure deficit
+    # Calculate pressure deficit and collect demand satisfaction data
     pressure_deficit = {}
+    critical_pressure_violations = 0
+    total_demand_met = 0
+    total_demand_required = 0
+    total_pressure = 0
+    
     for node in wn.junction_name_list:
         pressure = np.mean(results.node['pressure'][node])
-        pressure_deficit[node] = max(0, min_pressure - pressure)  # Assuming a minimum pressure of 20 m
+        total_pressure += pressure
 
-    # Calculate head loss
-    headlosses = {}
-    for pipe in wn.pipe_name_list:
-        headloss = np.mean(results.link['headloss'][pipe])
-        headlosses[pipe] = headloss
+        # Calculate pressure deficit
+        if pressure < min_pressure:
+            deficit = min_pressure - pressure
+            pressure_deficit[node] = deficit
+        
+        # Count critical pressure violations
+        if pressure < critical_pressure:
+            critical_pressure_violations += 1
+        
+        # Calculate demand satisfaction
+        node_obj = wn.get_node(node)
+        required_demand = node_obj.base_demand
+        if required_demand is not None and required_demand > 0:
+            actual_demand = np.mean(results.node['demand'][node])
+            total_demand_required += required_demand
+            
+            # If pressure is adequate, consider demand met
+            if pressure >= min_pressure:
+                total_demand_met += min(actual_demand, required_demand)
+
+    # Calculate demand satisfaction ratio
+    demand_satisfaction_ratio = 1.0
+    if total_demand_required > 0:
+        demand_satisfaction_ratio = total_demand_met / total_demand_required
+    
+    # Calculate total pressure deficit
+    total_pressure_deficit = sum(pressure_deficit.values())
 
     # Calculate total energy consumption using global efficiency
     total_energy_consumption = 0
@@ -252,9 +274,6 @@ def evaluate_network_performance(wn, results, final_time = 3600):
         for t in results.node['head'].index:
             # Get flow at this timestep
             flow = results.link['flowrate'][pump_name][t]
-
-            # Print flowrate
-            # print(f"Flow rate for pump {pump_name} at time {t}: {flow} L/s")
             
             # Only calculate energy when pump is running (flow > 0)
             if flow > 0:
@@ -270,20 +289,27 @@ def evaluate_network_performance(wn, results, final_time = 3600):
                 # Calculate energy in kWh: E = P × Δt
                 energy_kwh = power_kw * timestep_hours
                 total_energy_consumption += energy_kwh
-
-    # Print total energy consumption
-    # print(f"Total energy consumption: {total_energy_consumption:.2f} kWh")
     
-    # Calculate cost if needed
+    # Calculate cost
     price_per_kwh = wn.options.energy.global_price
-
-    # print(f"Price per kWh: {price_per_kwh} £/kWh")
-
     total_pump_cost = total_energy_consumption * price_per_kwh if price_per_kwh else 0
-
+    
     return {
-        'pressure_deficit': pressure_deficit,
-        'headlosses': headlosses,
+        'total_pressure': total_pressure,
+        'total_pressure_deficit': total_pressure_deficit,
         'total_energy_consumption': total_energy_consumption,
-        'total_pump_cost': total_pump_cost
+        'total_pump_cost': total_pump_cost,
+        'demand_satisfaction_ratio': demand_satisfaction_ratio
+        # 'critical_pressure_violations': critical_pressure_violations,
     }
+
+if __name__ == "__main__":
+    # Example usage
+    
+    # Load example network from modified_networks folder
+    example_network_path = os.path.join('Modified_nets', 'anytown-3.inp')
+    wn = wntr.network.WaterNetworkModel(example_network_path)
+    results = run_epanet_simulation(wn)
+    performance_metrics = evaluate_network_performance(wn, results)
+
+    print(performance_metrics)

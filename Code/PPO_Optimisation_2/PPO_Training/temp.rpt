@@ -1,0 +1,335 @@
+  Page 1                                    Tue May 27 03:41:49 2025
+
+  ******************************************************************
+  *                           E P A N E T                          *
+  *                   Hydraulic and Water Quality                  *
+  *                   Analysis for Pipe Networks                   *
+  *                         Version 2.2                            *
+  ******************************************************************
+  
+  Analysis begun Tue May 27 03:41:49 2025
+
+   
+  Hydraulic Status:
+  -----------------------------------------------------------------------
+     0:00:00: Balancing the network:
+
+              Trial  1: relative flow change = 1.027425
+              Trial  2: relative flow change = 0.254672
+              Pipe 142 switched from open to closed
+              Pipe 143 switched from open to closed
+              Pump 78 switched from open to closed
+              Trial  3: relative flow change = 1.107487
+              Trial  4: relative flow change = 0.128939
+              Pump 78 switched from closed to open
+              Trial  5: relative flow change = 0.078494
+              Trial  6: relative flow change = 0.006813
+                        maximum  flow change = 24.9117 for Link 78
+                        maximum  head error  = 0.0277 for Link 34
+
+     0:00:00: Balanced after 6 trials
+     0:00:00: Reservoir 40 is emptying
+     0:00:00: Tank 41 is closed at 3.05 m
+     0:00:00: Tank 42 is closed at 3.05 m
+     0:00:00: Pipe 142 temporarily closed
+     0:00:00: Pipe 143 temporarily closed
+   
+  WARNING: Negative pressures at 0:00:00 hrs.
+   
+     1:00:00: Balancing the network:
+
+              Trial  1: relative flow change = 0.052886
+              Trial  2: relative flow change = 0.013190
+              Pump 78 switched from open to closed
+              Trial  3: relative flow change = 0.021821
+              Trial  4: relative flow change = 0.000000
+                        maximum  flow change = 0.0000 for Link 4
+                        maximum  head error  = 0.0000 for Link 2
+
+     1:00:00: Balanced after 4 trials
+     1:00:00: Pump 78 changed from open to closed because cannot deliver head
+   
+  WARNING: Negative pressures at 1:00:00 hrs.
+  WARNING: Pump 78 closed because cannot deliver head at 1:00:00 hrs.
+  WARNING: Pump 79 open but exceeds maximum flow at 1:00:00 hrs.
+  WARNING: Pump 80 open but exceeds maximum flow at 1:00:00 hrs.
+   
+     2:00:00: Balancing the network:
+
+              Trial  1: relative flow change = 0.021355
+              Trial  2: relative flow change = 0.000000
+                        maximum  flow change = 0.0000 for Link 4
+                        maximum  head error  = 0.0000 for Link 2
+
+              Pump 78 switched from open to closed
+              Trial  3: relative flow change = 0.021821
+              Trial  4: relative flow change = 0.000000
+                        maximum  flow change = 0.0000 for Link 4
+                        maximum  head error  = 0.0000 for Link 2
+
+     2:00:00: Balanced after 4 trials
+   
+  WARNING: Negative pressures at 2:00:00 hrs.
+  WARNING: Pump 78 closed because cannot deliver head at 2:00:00 hrs.
+  WARNING: Pump 79 open but exceeds maximum flow at 2:00:00 hrs.
+  WARNING: Pump 80 open but exceeds maximum flow at 2:00:00 hrs.
+   
+     3:00:00: Balancing the network:
+
+              Trial  1: relative flow change = 0.174931
+              Trial  2: relative flow change = 0.084054
+              Pump 78 switched from open to closed
+              Trial  3: relative flow change = 0.045554
+              Trial  4: relative flow change = 0.000000
+                        maximum  flow change = 0.0000 for Link 4
+                        maximum  head error  = 0.0000 for Link 1
+
+     3:00:00: Balanced after 4 trials
+   
+  WARNING: Negative pressures at 3:00:00 hrs.
+  WARNING: Pump 78 closed because cannot deliver head at 3:00:00 hrs.
+   
+     4:00:00: Balancing the network:
+
+              Trial  1: relative flow change = 0.117728
+              Trial  2: relative flow change = 0.084054
+              Pump 78 switched from open to closed
+              Trial  3: relative flow change = 0.045554
+              Trial  4: relative flow change = 0.000000
+                        maximum  flow change = 0.0000 for Link 4
+                        maximum  head error  = 0.0000 for Link 2
+
+     4:00:00: Balanced after 4 trials
+   
+  WARNING: Negative pressures at 4:00:00 hrs.
+  WARNING: Pump 78 closed because cannot deliver head at 4:00:00 hrs.
+   
+     5:00:00: Balancing the network:
+
+              Trial  1: relative flow change = 0.058302
+              Trial  2: relative flow change = 0.023347
+              Pump 78 switched from open to closed
+              Trial  3: relative flow change = 0.037685
+              Trial  4: relative flow change = 0.000000
+                        maximum  flow change = 0.0000 for Link 33
+                        maximum  head error  = 0.0000 for Link 2
+
+     5:00:00: Balanced after 4 trials
+   
+  WARNING: Negative pressures at 5:00:00 hrs.
+  WARNING: Pump 78 closed because cannot deliver head at 5:00:00 hrs.
+   
+     6:00:00: Balancing the network:
+
+              Trial  1: relative flow change = 0.439852
+              Trial  2: relative flow change = 0.016694
+              Trial  3: relative flow change = 0.001381
+                        maximum  flow change = 9.2986 for Link 78
+                        maximum  head error  = 0.0000 for Link 3
+
+     6:00:00: Balanced after 3 trials
+     6:00:00: Pump 78 changed from closed because cannot deliver head to open
+   
+  WARNING: Negative pressures at 6:00:00 hrs.
+   
+     7:00:00: Balancing the network:
+
+              Trial  1: relative flow change = 0.000000
+                        maximum  flow change = 0.0000 for Link 33
+                        maximum  head error  = 0.0000 for Link 2
+
+     7:00:00: Balanced after 1 trials
+   
+  WARNING: Negative pressures at 7:00:00 hrs.
+   
+     8:00:00: Balancing the network:
+
+              Trial  1: relative flow change = 0.000000
+                        maximum  flow change = 0.0000 for Link 4
+                        maximum  head error  = 0.0000 for Link 2
+
+     8:00:00: Balanced after 1 trials
+   
+  WARNING: Negative pressures at 8:00:00 hrs.
+   
+     9:00:00: Balancing the network:
+
+              Trial  1: relative flow change = 0.166667
+              Trial  2: relative flow change = 0.000000
+                        maximum  flow change = 0.0000 for Link 4
+                        maximum  head error  = 0.0000 for Link 3
+
+     9:00:00: Balanced after 2 trials
+   
+  WARNING: Negative pressures at 9:00:00 hrs.
+   
+    10:00:00: Balancing the network:
+
+              Trial  1: relative flow change = 0.000000
+                        maximum  flow change = 0.0000 for Link 4
+                        maximum  head error  = 0.0000 for Link 2
+
+    10:00:00: Balanced after 1 trials
+   
+  WARNING: Negative pressures at 10:00:00 hrs.
+   
+    11:00:00: Balancing the network:
+
+              Trial  1: relative flow change = 0.000000
+                        maximum  flow change = 0.0000 for Link 4
+                        maximum  head error  = 0.0000 for Link 2
+
+    11:00:00: Balanced after 1 trials
+   
+  WARNING: Negative pressures at 11:00:00 hrs.
+   
+    12:00:00: Balancing the network:
+
+              Trial  1: relative flow change = 0.500000
+              Trial  2: relative flow change = 0.073190
+              Trial  3: relative flow change = 0.007357
+                        maximum  flow change = 84.9268 for Link 78
+                        maximum  head error  = 0.0000 for Link 2
+
+    12:00:00: Balanced after 3 trials
+   
+  WARNING: Negative pressures at 12:00:00 hrs.
+  WARNING: Pump 78 open but exceeds maximum flow at 12:00:00 hrs.
+   
+    13:00:00: Balancing the network:
+
+              Trial  1: relative flow change = 0.000000
+                        maximum  flow change = 0.0000 for Link 4
+                        maximum  head error  = 0.0000 for Link 2
+
+    13:00:00: Balanced after 1 trials
+   
+  WARNING: Negative pressures at 13:00:00 hrs.
+  WARNING: Pump 78 open but exceeds maximum flow at 13:00:00 hrs.
+   
+    14:00:00: Balancing the network:
+
+              Trial  1: relative flow change = 0.000000
+                        maximum  flow change = 0.0000 for Link 4
+                        maximum  head error  = 0.0000 for Link 3
+
+    14:00:00: Balanced after 1 trials
+   
+  WARNING: Negative pressures at 14:00:00 hrs.
+  WARNING: Pump 78 open but exceeds maximum flow at 14:00:00 hrs.
+   
+    15:00:00: Balancing the network:
+
+              Trial  1: relative flow change = 0.082526
+              Trial  2: relative flow change = 0.000000
+                        maximum  flow change = 0.0000 for Link 4
+                        maximum  head error  = 0.0000 for Link 2
+
+    15:00:00: Balanced after 2 trials
+   
+  WARNING: Negative pressures at 15:00:00 hrs.
+  WARNING: Pump 78 open but exceeds maximum flow at 15:00:00 hrs.
+   
+    16:00:00: Balancing the network:
+
+              Trial  1: relative flow change = 0.000000
+                        maximum  flow change = 0.0000 for Link 4
+                        maximum  head error  = 0.0000 for Link 1
+
+    16:00:00: Balanced after 1 trials
+   
+  WARNING: Negative pressures at 16:00:00 hrs.
+  WARNING: Pump 78 open but exceeds maximum flow at 16:00:00 hrs.
+   
+    17:00:00: Balancing the network:
+
+              Trial  1: relative flow change = 0.029508
+              Trial  2: relative flow change = 0.000212
+                        maximum  flow change = 2.6533 for Link 78
+                        maximum  head error  = 0.0000 for Link 2
+
+    17:00:00: Balanced after 2 trials
+   
+  WARNING: Negative pressures at 17:00:00 hrs.
+  WARNING: Pump 78 open but exceeds maximum flow at 17:00:00 hrs.
+   
+    18:00:00: Balancing the network:
+
+              Trial  1: relative flow change = 0.089802
+              Trial  2: relative flow change = 0.000000
+                        maximum  flow change = 0.0000 for Link 4
+                        maximum  head error  = 0.0000 for Link 1
+
+    18:00:00: Balanced after 2 trials
+   
+  WARNING: Negative pressures at 18:00:00 hrs.
+   
+    19:00:00: Balancing the network:
+
+              Trial  1: relative flow change = 0.031059
+              Trial  2: relative flow change = 0.000000
+                        maximum  flow change = 0.0000 for Link 40
+                        maximum  head error  = 0.0000 for Link 2
+
+    19:00:00: Balanced after 2 trials
+   
+  WARNING: Negative pressures at 19:00:00 hrs.
+   
+    20:00:00: Balancing the network:
+
+              Trial  1: relative flow change = 0.000000
+                        maximum  flow change = 0.0000 for Link 4
+                        maximum  head error  = 0.0000 for Link 3
+
+    20:00:00: Balanced after 1 trials
+   
+  WARNING: Negative pressures at 20:00:00 hrs.
+   
+    21:00:00: Balancing the network:
+
+              Trial  1: relative flow change = 0.100575
+              Trial  2: relative flow change = 0.001604
+                        maximum  flow change = 16.9783 for Link 78
+                        maximum  head error  = 0.0000 for Link 2
+
+    21:00:00: Balanced after 2 trials
+   
+  WARNING: Negative pressures at 21:00:00 hrs.
+   
+    22:00:00: Balancing the network:
+
+              Trial  1: relative flow change = 0.037962
+              Trial  2: relative flow change = 0.001482
+                        maximum  flow change = 15.6779 for Link 78
+                        maximum  head error  = 0.0000 for Link 2
+
+    22:00:00: Balanced after 2 trials
+   
+  WARNING: Negative pressures at 22:00:00 hrs.
+  WARNING: Pump 79 open but exceeds maximum flow at 22:00:00 hrs.
+  WARNING: Pump 80 open but exceeds maximum flow at 22:00:00 hrs.
+   
+    23:00:00: Balancing the network:
+
+              Trial  1: relative flow change = 0.000000
+                        maximum  flow change = 0.0000 for Link 40
+                        maximum  head error  = 0.0000 for Link 2
+
+    23:00:00: Balanced after 1 trials
+   
+  WARNING: Negative pressures at 23:00:00 hrs.
+  WARNING: Pump 79 open but exceeds maximum flow at 23:00:00 hrs.
+  WARNING: Pump 80 open but exceeds maximum flow at 23:00:00 hrs.
+   
+    24:00:00: Balancing the network:
+
+              Trial  1: relative flow change = 0.100000
+              Trial  2: relative flow change = 0.000000
+                        maximum  flow change = 0.0000 for Link 4
+                        maximum  head error  = 0.0000 for Link 2
+
+    24:00:00: Balanced after 2 trials
+   
+  WARNING: Negative pressures at 24:00:00 hrs.
+   
+  Analysis ended Tue May 27 03:41:49 2025

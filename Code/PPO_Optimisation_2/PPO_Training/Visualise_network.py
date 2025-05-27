@@ -181,7 +181,7 @@ def visualise_demands(wn, title, save_path = None, show = False):
     return figure
 
 
-def visualise_network(wn, results, title, save_path, mode='3d', show = False):
+def visualise_network(wn, results, title, save_path, mode='2d', show = False):
     """
     Visualise the water distribution network with pressure maps.
 
