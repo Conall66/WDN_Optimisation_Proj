@@ -177,10 +177,11 @@ def run_epanet_simulation(wn, static=False):  # Changed default to False
     wn.options.hydraulic.accuracy = 0.01
     wn.options.hydraulic.headloss = 'H-W'  # Hazen-Williams
     wn.options.hydraulic.demand_model = 'DDA'  # Demand-driven analysis is more stable
+    wn.options.hydraulic.demand_multiplier = 1.0  # No multiplier for demand
     
     # Ensure energy calculations are enabled
     wn.options.energy.global_efficiency = 75.0
-    wn.options.energy.global_price = 0.26  # £/kWh
+    wn.options.energy.global_price = 0.26
     
     # Debug pump information
     print(f"Network has {len(wn.pump_name_list)} pumps: {wn.pump_name_list}")

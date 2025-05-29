@@ -202,31 +202,50 @@ if __name__ == "__main__":
         # 2. Convert units in memory
         wn, units = convert_units(wn)
 
+        # 4. Map pipe diameters in memory
+        print("Mapping pipe diameters...")
+        discrete_diameters = [0.3048, 0.4064, 0.508, 0.609, 0.762, 1.016]
+        # wn = map_pipe_diameters(wn, discrete_diameters)
+
         # 3. Apply modifications specific to each network
         if 'anytown' in file.lower():
             # Enable pumps for Anytown
             wn = enable_pumps(wn)
+            exclude_pipes = ['4', '33', '40', '142', '143']
+            for pipe, pipe_data in wn.pipes():
+                if pipe_data.name not in exclude_pipes:
+                    pipe_data.diameter = min(discrete_diameters)
             
         elif 'hanoi' in file.lower():
             # For Hanoi, convert the reservoir to pump setup
             # wn = convert_reservoir_to_pump(wn, reservoir_name='1')
             # # Assign elevation profile to Hanoi network
             # wn = assign_elevation_profile(wn)
+
+            # Add a 50kWh pump
+            # pump_name = 'PUMP_1'
+            # wn.add_pump(pump_name,
+            #             start_node_name='5', 
+            #             end_node_name='6', 
+            #             pump_type='POWER',
+            #             pump_parameter = 50.0)
+
+            exclude_pipes = ['12', '11', '10', '2', '1', '21', '22']
+            for pipe, pipe_data in wn.pipes():
+                if pipe_data.name not in exclude_pipes:
+                    pipe_data.diameter = min(discrete_diameters)
+            for pipe, pipe_data in wn.pipes():
+                if pipe_data.name in exclude_pipes:
+                    pipe_data.diameter = max(discrete_diameters)
+
+            # Add a pump to the network to reduce the neccessity for a larger pipe diameters
+            wn.add_pump('PUMP_1',
+                        start_node_name='2', 
+                        end_node_name='3', 
+                        pump_type='POWER',
+                        pump_parameter=50.0)
+
             visualise_network(wn, results = None, title = 'Hanoi mod', save_path = None, mode='3d', show = True)
-            
-        # 4. Map pipe diameters in memory
-        print("Mapping pipe diameters...")
-        discrete_diameters = [0.3048, 0.4064, 0.508, 0.609, 0.762, 1.016]
-        wn = map_pipe_diameters(wn, discrete_diameters)
-
-        # Continue with the rest of your code...
-
-        # Assign global values here for the network
-        wn.options.hydraulic.demand_model = 'DDA'
-        wn.options.hydraulic.headloss = 'H-W'
-        wn.options.hydraulic.accuracy = 0.001
-        wn.options.energy.global_efficiency = 75.0
-        wn.options.energy.global_price = 0.26  # £/kWh
 
         # 5. Run simulation on the fully modified model object
         results = run_epanet_simulation(wn)
