@@ -15,6 +15,7 @@ import math
 import pandas as pd
 import networkx as nx
 import matplotlib.pyplot as plt
+import time
 
 from Hydraulic_Model import run_epanet_simulation, evaluate_network_performance
 from wntr.graphics import plot_network
@@ -23,50 +24,55 @@ from Visualise_network import visualise_network, visualise_demands
 random.seed(1)
 
 def calculate_reward(
-        initial_state, 
-        actions, # List of pipe ID diameter pairs representing the actions taken in the current time step
-        pipes,  # List of pipes in the network with unit costs
+        current_network, 
+        original_pipe_diameters,  # Dictionary of original pipe diameters
+        actions,                  # List of pipe ID diameter pairs representing the actions taken 
+        pipes,                    # Dictionary of pipe types with unit costs
         performance_metrics,
-        labour_cost):
+        labour_cost,
+        downgraded_pipes,
+        disconnections=False,
+        actions_causing_disconnections=None):
 
     """
     Calculate the reward based on the performance metrics and actions taken
 
     Args:
-        initial_state (dict): The initial state of the network before actions were taken
-        actions (list): The actions taken in the current time step. this will be in the form of
-        performance_metrics (dict): The performance metrics from the hydraulic simulation
+        current_network: The current state of the network after actions were taken
+        original_pipe_diameters: Dictionary of original pipe diameters before actions
+        actions: The actions taken in the current time step
+        pipes: Dictionary of pipe types with unit costs
+        performance_metrics: The performance metrics from the hydraulic simulation
+        labour_cost: Cost of labor per meter of pipe
+        disconnections: Boolean indicating if actions caused disconnections
+        actions_causing_disconnections: List of actions that caused disconnections
     """
 
     print("Calculating cost given provided actions...")
 
-    # wn = wntr.network.WaterNetworkModel(initial_state)
-
-    reward_weights = [0.1, # Cost ratio
-                      0.2, # Pressure deficit ratio
-                      0.3, # Demand satisfaction ratio
-                      0.4 # Disconnection multiplier
+    reward_weights = [0.5, # Cost ratio
+                      0.1, # Pressure deficit ratio
+                      0.1, # Demand satisfaction ratio
+                      0.2 # Disconnection multiplier
                       ]
 
-    initial_pipes = list(initial_state.pipes())
-    # print(f"Length of initial pipes: {len(list(initial_pipes))}")
+    initial_pipes = list(current_network.pipes())
     energy_cost = performance_metrics['total_pump_cost']
     total_pressure = performance_metrics['total_pressure']
 
-    cost = compute_total_cost(initial_pipes, actions, labour_cost, energy_cost, pipes)
+    # Compute cost using original pipe diameters instead of a separate network
+    cost = compute_total_cost(initial_pipes, actions, labour_cost, energy_cost, pipes, original_pipe_diameters)
     pressure_deficit = performance_metrics['total_pressure_deficit']
     demand_satisfaction = performance_metrics['demand_satisfaction_ratio']
-    disconnection, actions_causing_disconnections = calc_disconnect(initial_state, actions)
 
     # ------------------------------------
     # Extract cost ratio
 
     # Create a set of action to describe upgrading all pipes to the maximum diameter
-    # Extract diameter data from pipes disctionary
     max_diameter = max([pipes[pipe]['diameter'] for pipe in pipes])
     next_largest = max([pipes[pipe]['diameter'] for pipe in pipes if pipes[pipe]['diameter'] < max_diameter])
 
-    print(f"Max diameter: {max_diameter}, Next largest diameter: {next_largest}")
+    # print(f"Max diameter: {max_diameter}, Next largest diameter: {next_largest}")
 
     # Extract pipe IDs from initial_pipes
     initial_pipe_ids = [pipe_data.name for pipe, pipe_data in initial_pipes]
@@ -77,12 +83,15 @@ def calculate_reward(
     
     # Check if pipes already have the maximum diameter and adjust accordingly
     for i, (pipe_id, new_diameter) in enumerate(max_actions):
-        # Find the current diameter of this pipe
-        current_diameter = None
-        for pipe, pipe_data in initial_pipes:
-            if pipe_data.name == pipe_id:
-                current_diameter = pipe_data.diameter
-                break
+        # Get the current diameter from original_pipe_diameters if available
+        if pipe_id in original_pipe_diameters:
+            current_diameter = original_pipe_diameters[pipe_id]
+        else:
+            # Otherwise get it from the current network
+            for pipe, pipe_data in initial_pipes:
+                if pipe_data.name == pipe_id:
+                    current_diameter = pipe_data.diameter
+                    break
         
         # If the pipe already has the maximum diameter, use next largest instead
         if current_diameter == max_diameter:
@@ -91,20 +100,19 @@ def calculate_reward(
             corrected_max_actions.append((pipe_id, max_diameter))
     
     max_actions = corrected_max_actions
-    # print(f"Max actions: {max_actions}")
 
     print("-------------------------------------")
     print("Calculating cost given maximum actions...")
 
-    max_cost = compute_total_cost(initial_pipes, max_actions, labour_cost, energy_cost, pipes)
+    max_cost = compute_total_cost(initial_pipes, max_actions, labour_cost, energy_cost, pipes, original_pipe_diameters)
+
+    print("-------------------------------------")
     cost_ratio = 1 - (cost / max_cost) if max_cost > 0 else 0 # Where a cost of 1 is the best possible outcome
 
-    print(f"Cost: {cost}, Max Cost: {max_cost}, Cost Ratio: {cost_ratio}")
+    # print(f"Cost: {cost}, Max Cost: {max_cost}, Cost Ratio: {cost_ratio}")
 
     # ------------------------------------
     # Extract pressure deficit ratio from total pressure in the system and pressure deficit
-    # pressure deficit ratio is 1 if there is no pressure deficit, and 0 if the pressure deficit is equal to the total pressure in the system
-
     if pressure_deficit <= 0:
         # No pressure deficit - best case
         pd_ratio = 1
@@ -112,36 +120,48 @@ def calculate_reward(
         # Normalize against total pressure to get ratio between 0 and 1
         pd_ratio = max(0, 1 - (pressure_deficit / total_pressure)) if total_pressure > 0 else 0
     
-    print(f"Pressure Deficit: {pressure_deficit}, Total Pressure: {total_pressure}, PD Ratio: {pd_ratio}")
+    # print(f"Pressure Deficit: {pressure_deficit}, Total Pressure: {total_pressure}, PD Ratio: {pd_ratio}")
 
     # ------------------------------------
     # Disconnection penalty
-    if disconnection:
-        # If there is a disconnection, we apply a penalty
-        disconnection_multiplier = 0
-    else:
-        # If there is no disconnection, we apply a reward
-        disconnection_multiplier = 1
+    disconnection_multiplier = 0 if disconnections else 1
 
     # ------------------------------------
     # Demand satisfaction ratio is already between 0 and 1, so we can use it directly
-    print(f"Demand Satisfaction Ratio: {demand_satisfaction}")
+    # print(f"Demand Satisfaction Ratio: {demand_satisfaction}")
+    
     # ------------------------------------
     # Calculate the final reward
-    reward = (reward_weights[0] * cost_ratio +
+    reward = max(reward_weights[0] * cost_ratio +
               reward_weights[1] * pd_ratio +
               reward_weights[2] * demand_satisfaction +
-              reward_weights[3] * disconnection_multiplier)
+              reward_weights[3] * disconnection_multiplier,
+              0)  # Ensure reward is non-negative
+    
+    if downgraded_pipes:
+        reward = 0 # Overwrite reward if any pipes were downgraded to smaller pipes
+    
+    print(f"Reward: {reward} (Cost Ratio: {cost_ratio}, PD Ratio: {pd_ratio}, Demand Satisfaction: {demand_satisfaction}, Disconnection Multiplier: {disconnection_multiplier}, Downgraded Pipes: {downgraded_pipes})")
     
     print("------------------------------------")
 
-    return reward, cost, pd_ratio, demand_satisfaction, disconnection, actions_causing_disconnections
+    return reward, cost, pd_ratio, demand_satisfaction, disconnections, actions_causing_disconnections, downgraded_pipes
 
 
-def compute_total_cost(initial_pipes, actions, labour_cost, energy_cost, pipes):
-    # pipes in the form {Pipe_ID: {'diameter': diameter, 'unit_cost': unit_cost}}
+def compute_total_cost(initial_pipes, actions, labour_cost, energy_cost, pipes, original_pipe_diameters=None):
+    """
+    Compute the total cost of actions taken
+    
+    Args:
+        initial_pipes: List of pipes in the current network
+        actions: List of pipe ID diameter pairs representing the actions taken
+        labour_cost: Cost of labor per meter of pipe
+        energy_cost: Energy cost from pump operation
+        pipes: Dictionary of pipe types with unit costs
+        original_pipe_diameters: Dictionary of original pipe diameters before actions
+    """
      
-    num_changes = 0
+    num_changes = len(actions)
     pipe_upg_cost = 0
     labour_cost_total = 0
 
@@ -163,9 +183,14 @@ def compute_total_cost(initial_pipes, actions, labour_cost, energy_cost, pipes):
         if pipe_id in pipe_ids:
             # Access pipe object from our dictionary
             pipe_obj = pipe_dict[pipe_id]
-            if abs(pipe_obj.diameter - new_diameter) > 0.001:
-                # print(f"Upgrading pipe {pipe_id} from diameter {pipe_obj.diameter} to {new_diameter}")
-                num_changes += 1
+            
+            # Determine original diameter (either from stored original diameters or current pipe)
+            original_diameter = original_pipe_diameters.get(pipe_id, pipe_obj.diameter) if original_pipe_diameters else pipe_obj.diameter
+
+            # print(f"Processing action {action} for pipe {pipe_id}: Original Diameter = {original_diameter}, New Diameter = {new_diameter}")
+            
+            if new_diameter != original_diameter:
+                # num_changes += 1
                 length_of_pipe = pipe_obj.length
                 
                 # Find the right pipe diameter in pipes dict
@@ -174,12 +199,16 @@ def compute_total_cost(initial_pipes, actions, labour_cost, energy_cost, pipes):
                         pipe_upg_cost += pipe_data['unit_cost'] * length_of_pipe
                         labour_cost_total += labour_cost * length_of_pipe
                         break
-
-        else: # New pipes added will have IDs not in the initial pipes
+        else: 
+            # New pipes added will have IDs not in the initial pipes
+            # For these, we need to estimate a length or get it from the action
+            # Assuming a default length if not available
+            length_of_pipe = 100  # Default length in meters
+            
             for pipe_type, pipe_data in pipes.items():
                 if pipe_data['diameter'] == new_diameter:
-                    pipe_upg_cost += pipe_data['unit_cost'] * pipe_obj.length
-                    labour_cost_total += labour_cost * pipe_obj.length
+                    pipe_upg_cost += pipe_data['unit_cost'] * length_of_pipe
+                    labour_cost_total += labour_cost * length_of_pipe
                     break
 
     # Add all costs together
@@ -566,7 +595,7 @@ if __name__ == "__main__":
     # test_reward_random_net()
     # test_reward_random_net()
     # print("Test completed successfully.")
-    # test_reward_anytown()
+    # test_reward_anytown(
 
     # Visualise both networks
     script = os.path.dirname(__file__)

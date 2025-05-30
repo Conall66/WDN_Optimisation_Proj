@@ -3,19 +3,6 @@
 
 In this file, we convert a network from a networkx graph to a .inp file. We feed this into the EPANET solver to determine hydraulic performance values, and return the pressure deficit and flow rate for each node in the network. We also return the total energy consumption of the network, which is the sum of the energy consumption of each pump in the network. These features will help determine the reward of the agent.
 
-Units used throughout the simulation are as follows:
-
-- Length: m
-- Diameter: mm
-- Roughness: D-W
-- Minor loss: m
-- Pressure: m
-- Flow rate: L/s
-- Energy consumption: kWh
-- Power: kW
-- Elevation: m
-- Time: s
-
 """
 
 # Import necessary libraries
@@ -180,7 +167,7 @@ def run_epanet_simulation(wn, static=False):  # Changed default to False
     wn.options.hydraulic.demand_multiplier = 1.0  # No multiplier for demand
     
     # Ensure energy calculations are enabled
-    wn.options.energy.global_efficiency = 75.0
+    wn.options.energy.global_efficiency = 100.0
     wn.options.energy.global_price = 0.26
     
     # Debug pump information
