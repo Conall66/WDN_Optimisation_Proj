@@ -112,13 +112,22 @@ def calculate_reward(
     # print(f"Cost: {cost}, Max Cost: {max_cost}, Cost Ratio: {cost_ratio}")
 
     # ------------------------------------
-    # Extract pressure deficit ratio from total pressure in the system and pressure deficit
+    # Extract pressure deficit ratio - MODIFIED APPROACH
+    # Define a pressure deficit penalty directly proportional to the pressure deficit
+    
+    # Define a maximum expected pressure deficit for scaling
+    max_expected_pressure_deficit = total_pressure * 0.5  # Assuming a 50% deficit as worst case
+    
     if pressure_deficit <= 0:
         # No pressure deficit - best case
         pd_ratio = 1
     else:
-        # Normalize against total pressure to get ratio between 0 and 1
-        pd_ratio = max(0, 1 - (pressure_deficit / total_pressure)) if total_pressure > 0 else 0
+        # Directly proportional to pressure deficit 
+        # Invert so higher deficit = lower ratio (worse reward)
+        pd_ratio = max(0, 1 - (pressure_deficit / max_expected_pressure_deficit))
+        
+        # Clamp to [0,1] range
+        pd_ratio = max(0, min(1, pd_ratio))
     
     # print(f"Pressure Deficit: {pressure_deficit}, Total Pressure: {total_pressure}, PD Ratio: {pd_ratio}")
 
@@ -375,12 +384,26 @@ def test_reward_anytown():
     labour_cost = 100  # Arbitrary labour cost per pipe (£100/m)
     results = run_epanet_simulation(wn)
     performance_metrics = evaluate_network_performance(wn, results)
+
+    # Identify downgraded pipes
+    downgraded_pipes = False
+    for action in actions:
+        pipe_id, new_diameter = action
+        if pipe_id in exclude_pipes:
+            continue
+        current_diameter = initial_pipes[pipe_id].diameter
+        if new_diameter < current_diameter:
+            downgraded_pipes = True
+            print(f"Pipe {pipe_id} downgraded from {current_diameter} to {new_diameter}")
+
     reward = calculate_reward(
         initial_state=wn,
         actions=actions,
         pipes=pipes,
         performance_metrics=performance_metrics,
-        labour_cost=labour_cost
+        labour_cost=labour_cost,
+        downgraded_pipes=downgraded_pipes
+
     )
     print(f"Reward for the actions taken: {reward}")
 
@@ -479,8 +502,8 @@ def plot_diameter_effect_on_reward(inp_file, net_name):
                     new_diameter = pipe_diameters[new_index]
                 
                 # Only add an action if the diameter changes
-                if abs(new_diameter - current_diameter) > 0.0001:
-                    actions.append((pipe_id, new_diameter))
+                # if abs(new_diameter - current_diameter) > 0.0001:
+                actions.append((pipe_id, new_diameter))
 
         # Apply actions to the network
         for pipe_id, new_diameter in actions:
@@ -491,12 +514,15 @@ def plot_diameter_effect_on_reward(inp_file, net_name):
         results = run_epanet_simulation(wn)
         performance_metrics = evaluate_network_performance(wn, results)
         
-        reward, cost, pd_ratio, demand_satisfaction, disconnection, actions_causing_disconnections  = calculate_reward(
-            initial_state=wn_original,
+        # Calculate the reward
+        reward, cost, pd_ratio, demand_satisfaction, disconnections, actions_causing_disconnections, downgraded_pipes = calculate_reward(
+            current_network=wn,
+            original_pipe_diameters={pipe[0]: pipe[1].diameter for pipe in wn_original.pipes()},
             actions=actions,
             pipes=pipes,
             performance_metrics=performance_metrics,
-            labour_cost=labour_cost
+            labour_cost=labour_cost,
+            downgraded_pipes=False,  # Assume no downgraded pipes for this test
         )
         
         # Store results
@@ -599,12 +625,12 @@ if __name__ == "__main__":
 
     # Visualise both networks
     script = os.path.dirname(__file__)
-    inp_file_anytown = os.path.join(script, 'Modified_nets', 'anytown-3.inp')
-    inp_file_hanoi = os.path.join(script, 'Modified_nets', 'hanoi-3.inp')
+    inp_file_anytown = os.path.join(script, 'Modified_nets', 'anytown_sprawling_3', 'Step_50.inp')
+    inp_file_hanoi = os.path.join(script, 'Modified_nets', 'hanoi_sprawling_3', 'Step_50.inp')
     wn_anytown = wntr.network.WaterNetworkModel(inp_file_anytown)
     wn_hanoi = wntr.network.WaterNetworkModel(inp_file_hanoi)
-    visualise_demands(wn_anytown, title="Anytown Network Demands", show = True)
-    visualise_demands(wn_hanoi, title="Hanoi Network Demands", show = True)
+    # visualise_demands(wn_anytown, title="Anytown Network Demands", show = True)
+    # visualise_demands(wn_hanoi, title="Hanoi Network Demands", show = True)
 
     # Print existing pipe diameters
     print("Anytown Network Pipe Diameters:")

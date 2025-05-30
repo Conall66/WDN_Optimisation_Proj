@@ -296,27 +296,35 @@ if __name__ == "__main__":
     # Example usage
     
     # Load example network from modified_networks folder
-    example_network_path = os.path.join('Modified_nets', 'anytown-3.inp')
-    wn = wntr.network.WaterNetworkModel(example_network_path)
-    results = run_epanet_simulation(wn)
+    # example_network_path = os.path.join('Modified_nets', 'hanoi_densifying_3', 'Step_1.inp')
 
-    # Print nodal demand values and demand supplied values in a table
-    # demand_data = []
-    # for node, node_data in wn.junctions():
-    #     node_name = node_data.name
-    #     base_demand = node_data.base_demand
-    #     demand_supplied = np.mean(results.node['demand'][node_name])
-    #     pressure = np.mean(results.node['pressure'][node_name])
-    #     demand_data.append({
-    #         'Node': node_name,
-    #         'Base Demand': base_demand,
-    #         'Demand Supplied': demand_supplied,
-    #         'Pressure (m)': pressure
-    #     })
-    # demand_df = pd.DataFrame(demand_data)
-    # print("Nodal Demand and Pressure Data:")
-    # print(demand_df)
+    path = os.path.join(os.path.dirname(__file__), 'Modified_nets', 'hanoi_sprawling_3')
 
-    performance_metrics = evaluate_network_performance(wn, results)
+    for file in os.listdir(path):
+        if file.endswith('.inp'):
+            example_network_path = os.path.join(path, file)
+            print(f"Using network file: {example_network_path}")
 
-    print(performance_metrics)
+            wn = wntr.network.WaterNetworkModel(example_network_path)
+            results = run_epanet_simulation(wn)
+
+            # Print nodal demand values and demand supplied values in a table
+            # demand_data = []
+            # for node, node_data in wn.junctions():
+            #     node_name = node_data.name
+            #     base_demand = node_data.base_demand
+            #     demand_supplied = np.mean(results.node['demand'][node_name])
+            #     pressure = np.mean(results.node['pressure'][node_name])
+            #     demand_data.append({
+            #         'Node': node_name,
+            #         'Base Demand': base_demand,
+            #         'Demand Supplied': demand_supplied,
+            #         'Pressure (m)': pressure
+            #     })
+            # demand_df = pd.DataFrame(demand_data)
+            # print("Nodal Demand and Pressure Data:")
+            # print(demand_df)
+
+            performance_metrics = evaluate_network_performance(wn, results)
+
+            print(performance_metrics)

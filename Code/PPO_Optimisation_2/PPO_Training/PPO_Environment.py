@@ -28,7 +28,8 @@ class WNTRGymEnv(gym.Env):
             scenarios,
             networks_folder='Modified_nets',
             pressure_threshold = 0,
-            max_episodes = 1000000):
+            max_episodes = 1000000,
+            ):
         
         super(WNTRGymEnv, self).__init__()
 
@@ -144,7 +145,7 @@ class WNTRGymEnv(gym.Env):
         """Calculate the reward based on performance metrics and topology changes."""
         # Create a simple structure with the original pipe diameters and current network
         # to pass to calculate_reward
-        reward, cost, pd_ratio, demand_satisfaction, disconnections, actions_causing_disconnections = calculate_reward(
+        reward, cost, pd_ratio, demand_satisfaction, disconnections, actions_causing_disconnections, downgraded_pipes = calculate_reward(
             self.current_network,  # Current network state
             original_pipe_diameters,  # Original diameters
             actions,
@@ -156,7 +157,7 @@ class WNTRGymEnv(gym.Env):
             actions_causing_disconnections
         )
 
-        return reward, cost, pd_ratio, demand_satisfaction, disconnections, actions_causing_disconnections
+        return reward, cost, pd_ratio, demand_satisfaction, disconnections, actions_causing_disconnections, downgraded_pipes
     
     def reset(self) -> np.ndarray:
         """Reset the environment for a new episode."""
@@ -400,6 +401,11 @@ if __name__ == "__main__":
         'hanoi_sprawling_3'
     ]
 
+    def select_no_downgrades(env):
+        action_mask = env.get_action_mask()
+        valid_actions = [i for i, valid in enumerate(action_mask) if valid]
+        return random.choice(valid_actions) if valid_actions else 0  # Default to no change if no valid actions
+
     env = WNTRGymEnv(pipes, scenarios)
     obs = env.reset()
     # print("Initial Observation:", obs)
@@ -421,7 +427,8 @@ if __name__ == "__main__":
         pipes_in_current_step = len(env.pipe_names)
         
         for pipe_idx in range(pipes_in_current_step):
-            action = env.action_space.sample()  # Random action
+            # action = env.action_space.sample()  # Random action
+            action = select_no_downgrades(env)  # Select an action with no downgrades
             obs, reward, done, info = env.step(action)
             rewards.append(reward)
             # total_reward += reward
