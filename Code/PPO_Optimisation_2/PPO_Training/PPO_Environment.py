@@ -28,7 +28,7 @@ class WNTRGymEnv(gym.Env):
             scenarios,
             networks_folder='Modified_nets',
             pressure_threshold = 0,
-            max_episodes = 1000000,
+            max_episodes = 1000,
             ):
         
         super(WNTRGymEnv, self).__init__()
