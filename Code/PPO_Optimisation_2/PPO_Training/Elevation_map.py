@@ -3,6 +3,8 @@
 
 This function is used to generated an elevation map to extract values from for the network.
 
+NOT CURRENTLY IN USE
+
 """
 
 # Importing the required libraries

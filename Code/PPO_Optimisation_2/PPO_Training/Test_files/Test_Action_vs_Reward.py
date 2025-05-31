@@ -1,3 +1,11 @@
+
+"""
+
+In this script, we test the impact of a particular action on the reward in the WNTRGymEnv environment. The test checks if the action leads to a reward that is consistent with the expected outcome based on the pipe diameter changes.
+
+"""
+
+
 import unittest
 import os
 import numpy as np

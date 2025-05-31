@@ -171,7 +171,7 @@ def run_epanet_simulation(wn, static=False):  # Changed default to False
     wn.options.energy.global_price = 0.26
     
     # Debug pump information
-    print(f"Network has {len(wn.pump_name_list)} pumps: {wn.pump_name_list}")
+    # print(f"Network has {len(wn.pump_name_list)} pumps: {wn.pump_name_list}")
     
     start_time = time.time()
 
@@ -181,7 +181,7 @@ def run_epanet_simulation(wn, static=False):  # Changed default to False
 
     end_time = time.time()
     run_time = end_time - start_time
-    print(f"Hydraulic simulation completed in {run_time:.4f} seconds")
+    # print(f"Hydraulic simulation completed in {run_time:.4f} seconds")
     
     # Debug energy results
     """Energy data is never added to the results"""

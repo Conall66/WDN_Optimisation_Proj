@@ -20,7 +20,7 @@ def gen_curve(x, final_val, midpoint, steepness = 0.5):
     base_curve = 1 + (final_val - 1) / (1 + np.exp(-steepness * (x - midpoint)))
     return base_curve
 
-def gen_seasonal_variation(demand_curves, summer_amplitude = 0.05, winter_ratio = 0.3):
+def gen_seasonal_variation(demand_curves, summer_amplitude = 0.15, winter_ratio = 0.15):
     """
     Adds seasonal variation to demand curves, alternating between summer and winter.
     
@@ -42,7 +42,7 @@ def gen_seasonal_variation(demand_curves, summer_amplitude = 0.05, winter_ratio 
         
         # Generate alternating pattern (every 2 steps)
         for i in range(steps):
-            if (i // 2) % 2 == 0:  # Summer (higher demand)
+            if i % 2 == 0:  # Summer (higher demand)
                 seasonal_pattern[i] = summer_amplitude
             else:  # Winter (lower demand)
                 seasonal_pattern[i] = -winter_amplitude
@@ -132,6 +132,7 @@ def generate_demand_curves(time_steps, plot=False):
         plt.title('Demand Growth Scenarios (2025-2050)')
         plt.xlabel('Year')
         plt.ylabel('Demand Multiplier')
+        plt.xticks(np.arange(actual_start_year, actual_end_year + 1, 1), rotation = 60)
         plt.legend(legend_labels, loc='upper left')
         plt.grid(True)
         # Save to plot folders
@@ -148,7 +149,7 @@ def generate_demand_curves(time_steps, plot=False):
 
 if __name__ == "__main__":
     # Generate demand curves
-    time_steps = 50  # Number of time steps from 2025 to 2050
+    time_steps = 51  # Number of time steps from 2025 to 2050 (inclusive)
     demand_curves = generate_demand_curves(time_steps, plot = True)
     # Print the length of each of the demand curves
     for i, curve in enumerate(demand_curves):

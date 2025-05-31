@@ -32,7 +32,8 @@ def calculate_reward(
         labour_cost,
         downgraded_pipes,
         disconnections=False,
-        actions_causing_disconnections=None):
+        actions_causing_disconnections=None,
+        max_pd = None):
 
     """
     Calculate the reward based on the performance metrics and actions taken
@@ -50,10 +51,10 @@ def calculate_reward(
 
     print("Calculating cost given provided actions...")
 
-    reward_weights = [0.5, # Cost ratio
-                      0.1, # Pressure deficit ratio
-                      0.1, # Demand satisfaction ratio
-                      0.2 # Disconnection multiplier
+    reward_weights = [0.1, # Cost ratio
+                      0.3, # Pressure deficit ratio
+                      0.2, # Demand satisfaction ratio
+                      0.4 # Disconnection multiplier
                       ]
 
     initial_pipes = list(current_network.pipes())
@@ -109,27 +110,11 @@ def calculate_reward(
     print("-------------------------------------")
     cost_ratio = 1 - (cost / max_cost) if max_cost > 0 else 0 # Where a cost of 1 is the best possible outcome
 
-    # print(f"Cost: {cost}, Max Cost: {max_cost}, Cost Ratio: {cost_ratio}")
-
     # ------------------------------------
-    # Extract pressure deficit ratio - MODIFIED APPROACH
-    # Define a pressure deficit penalty directly proportional to the pressure deficit
     
-    # Define a maximum expected pressure deficit for scaling
-    max_expected_pressure_deficit = total_pressure * 0.5  # Assuming a 50% deficit as worst case
-    
-    if pressure_deficit <= 0:
-        # No pressure deficit - best case
-        pd_ratio = 1
-    else:
-        # Directly proportional to pressure deficit 
-        # Invert so higher deficit = lower ratio (worse reward)
-        pd_ratio = max(0, 1 - (pressure_deficit / max_expected_pressure_deficit))
-        
-        # Clamp to [0,1] range
-        pd_ratio = max(0, min(1, pd_ratio))
-    
-    # print(f"Pressure Deficit: {pressure_deficit}, Total Pressure: {total_pressure}, PD Ratio: {pd_ratio}")
+    # Normalise the pressure deficit ratio between 0 and the maximum pressure deficit (taken when all the pipes have the smallest possible diameter from selection)
+
+    pd_ratio = 1 - (pressure_deficit / max_pd) if max_pd else 0  # Where a PD ratio of 1 is the best possible outcome
 
     # ------------------------------------
     # Disconnection penalty
@@ -334,12 +319,13 @@ def test_reward_random_net():
     #     print("No disconnections occurred.")
 
     # calculate reward function as a total
+    
     reward = calculate_reward(
         initial_state=wn,
         actions=actions,
         pipes=pipes,
         performance_metrics=performance_metrics,
-        labour_cost=labour_cost
+        labour_cost=labour_cost,
     )
 
     print(f"Reward for the actions taken: {reward}")
@@ -396,14 +382,26 @@ def test_reward_anytown():
             downgraded_pipes = True
             print(f"Pipe {pipe_id} downgraded from {current_diameter} to {new_diameter}")
 
+    # calculate the maximum pressure deficit for the anytown network for when pipes all have the smallest diameter
+
+    min_pipe_diameter = min(pipe_diameters)
+    wn_copy = wntr.network.WaterNetworkModel(inp_file)
+    for pipe in wn_copy.pipes():
+        pipe_id = pipe[0]
+        if pipe_id not in exclude_pipes:
+            wn_copy.get_link(pipe_id).diameter = min_pipe_diameter
+    results_copy = run_epanet_simulation(wn_copy)
+    performance_metrics_copy = evaluate_network_performance(wn_copy, results_copy)
+    max_pd = performance_metrics_copy['total_pressure_deficit']
+
     reward = calculate_reward(
         initial_state=wn,
         actions=actions,
         pipes=pipes,
         performance_metrics=performance_metrics,
         labour_cost=labour_cost,
-        downgraded_pipes=downgraded_pipes
-
+        downgraded_pipes=downgraded_pipes,
+        max_pd = max_pd
     )
     print(f"Reward for the actions taken: {reward}")
 
@@ -465,6 +463,16 @@ def plot_diameter_effect_on_reward(inp_file, net_name):
         # Load a fresh copy of the network for each scenario
         wn = wntr.network.WaterNetworkModel(inp_file)
         wn_original = wntr.network.WaterNetworkModel(inp_file)  # Keep original for reference
+
+        min_pipe_diameter = min(pipe_diameters)
+        wn_copy = wntr.network.WaterNetworkModel(inp_file)
+        for pipe in wn_copy.pipes():
+            pipe_id = pipe[0]
+            if pipe_id not in exclude_pipes:
+                wn_copy.get_link(pipe_id).diameter = min_pipe_diameter
+        results_copy = run_epanet_simulation(wn_copy)
+        performance_metrics_copy = evaluate_network_performance(wn_copy, results_copy)
+        max_pd = performance_metrics_copy['total_pressure_deficit']
         
         # Generate actions based on the scenario
         actions = []
@@ -523,6 +531,7 @@ def plot_diameter_effect_on_reward(inp_file, net_name):
             performance_metrics=performance_metrics,
             labour_cost=labour_cost,
             downgraded_pipes=False,  # Assume no downgraded pipes for this test
+            max_pd=max_pd
         )
         
         # Store results

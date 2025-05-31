@@ -209,6 +209,7 @@ if __name__ == "__main__":
 
         # 3. Apply modifications specific to each network
         if 'anytown' in file.lower():
+            name = 'Anytown'
             # Enable pumps for Anytown
             wn = enable_pumps(wn)
             exclude_pipes = ['4', '33', '40', '142', '143']
@@ -229,6 +230,7 @@ if __name__ == "__main__":
             #             end_node_name='6', 
             #             pump_type='POWER',
             #             pump_parameter = 50.0)
+            name = 'Hanoi'
 
             exclude_pipes = ['12', '11', '10', '2', '1', '21', '22']
             for pipe, pipe_data in wn.pipes():
@@ -245,7 +247,7 @@ if __name__ == "__main__":
                         pump_type='POWER',
                         pump_parameter=50.0)
 
-            visualise_network(wn, results = None, title = 'Hanoi mod', save_path = None, mode='3d', show = True)
+        visualise_demands(wn, title = f'Initial_{name}_network', save_path=os.path.join(script, 'Plots', f'{name}_Initial_Network.png'), show = True)
 
         # 5. Run simulation on the fully modified model object
         results = run_epanet_simulation(wn)
