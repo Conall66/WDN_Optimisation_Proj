@@ -349,6 +349,13 @@ class GraphPPOAgent:
             "verbose": 2
         }
 
+        # Set device if not provided in ppo_kwargs
+        if "device" not in ppo_kwargs:
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            default_ppo_kwargs["device"] = device
+            print(f"Using device: {device}")
+
+        # Update default kwargs with provided kwargs
         default_ppo_kwargs.update(ppo_kwargs)
         
         # Create PPO agent with custom policy
@@ -356,7 +363,6 @@ class GraphPPOAgent:
             GNNActorCriticPolicy,
             env,
             policy_kwargs={"pipes_config": pipes_config},
-            device = device,
             **default_ppo_kwargs
         )
     

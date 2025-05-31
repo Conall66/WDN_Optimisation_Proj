@@ -50,6 +50,11 @@ def plot_training_and_performance(log_file="training_log.csv"):
     """
     Plots the main training progress and performance metrics from the log file.
     """
+    script = os.path.dirname(__file__)
+    save_path = os.path.join(script, "Plots", "Reward_by_Scenario")
+    if not os.path.exists(save_path):
+        os.makedirs(save_path)
+
     if not os.path.exists(log_file):
         print(f"Log file not found: {log_file}")
         return
@@ -109,7 +114,7 @@ def plot_training_and_performance(log_file="training_log.csv"):
     axs2[1, 1].set_ylabel('Demand Satisfaction (%)')
 
     plt.tight_layout(rect=[0, 0, 1, 0.96])
-    plt.savefig("stepwise_performance_metrics.png")
+    plt.savefig(os.path.join(save_path, "stepwise_performance_metrics.png"))
     plt.show()
 
 def plot_action_analysis(log_file="training_log.csv"):
@@ -117,6 +122,12 @@ def plot_action_analysis(log_file="training_log.csv"):
     Plots the agent's action analysis metrics from the log file.
     Note: Upgraded pipes are not plotted as the environment logic prevents them.
     """
+
+    script = os.path.dirname(__file__)
+    save_path = os.path.join(script, "Plots", "Action Analysis")
+    if not os.path.exists(save_path):
+        os.makedirs(save_path)
+
     if not os.path.exists(log_file):
         print(f"Log file not found: {log_file}")
         return
@@ -135,7 +146,7 @@ def plot_action_analysis(log_file="training_log.csv"):
     plt.legend()
     plt.grid(True)
     plt.tight_layout()
-    plt.savefig("action_analysis_metrics.png")
+    plt.savefig(os.path.join(save_path, "action_analysis_metrics.png"))
     plt.show()
 
 
@@ -146,6 +157,12 @@ def plot_final_agent_rewards_by_scenario(scenario_rewards: dict):
     Args:
         scenario_rewards: A dictionary with scenario names as keys and average rewards as values.
     """
+
+    script = os.path.dirname(__file__)
+    save_path = os.path.join(script, "Plots", "Reward_by_Scenario")
+    if not os.path.exists(save_path):
+        os.makedirs(save_path)
+
     scenarios = list(scenario_rewards.keys())
     rewards = list(scenario_rewards.values())
     
@@ -157,5 +174,5 @@ def plot_final_agent_rewards_by_scenario(scenario_rewards: dict):
     plt.title('Final Agent Reward by Scenario')
     plt.xticks(rotation=45, ha='right')
     plt.tight_layout()
-    plt.savefig("final_agent_rewards_by_scenario.png")
+    plt.savefig(os.path.join(save_path,"final_agent_rewards_by_scenario.png"))
     plt.show()
