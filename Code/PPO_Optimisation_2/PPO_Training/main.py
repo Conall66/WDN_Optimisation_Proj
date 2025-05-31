@@ -4,6 +4,8 @@ Integration script for GNN-based PPO agent with your water distribution network 
 This script shows how to integrate the GNN actor-critic networks with your existing
 PPO_Environment.py and train the agent.
 
+For plots on training performance, use Train_w_plots.py instead
+
 Requirements:
 pip install torch torch-geometric stable-baselines3 torch-scatter torch-sparse
 """

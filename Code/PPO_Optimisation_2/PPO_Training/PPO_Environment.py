@@ -141,74 +141,144 @@ class WNTRGymEnv(gym.Env):
         self.node_pressures = {}
         results, _ = self.simulate_network(self.current_network)
         if results:
-            for node_name in self.node_names:
-                self.node_pressures[node_name] = np.mean(results.node['pressure'][node_name])
+            # Important: Sanitize the pressure results
+            pressures = results.node['pressure']
+            # Convert NaN to 0, inf to large numbers
+            # sanitized_pressures = np.nan_to_num(pressures, nan=0.0, posinf=1e6, neginf=-1e6)
+            
+            if hasattr(pressures, 'loc'):
+                for node_name in self.node_names:
+                    # Get all pressure values for this node across the simulation time
+                    node_pressures = pressures.loc[:, node_name].values
+                    
+                    # FIX: Use np.nanmean to safely calculate the average, ignoring NaNs.
+                    # If all values are NaN, nanmean returns NaN, so we check for that.
+                    mean_pressure = np.nanmean(node_pressures)
+                    
+                    # If the result is still NaN (e.g., all pressures were NaN), default to 0.
+                    self.node_pressures[node_name] = 0.0 if np.isnan(mean_pressure) else mean_pressure
 
     def step(self, action: int) -> Tuple[Dict, float, bool, bool, Dict]:
-        reward = 0.0
         terminated = False
         truncated = False
+        
+        # Default info and reward for an intermediate step (acting on a single pipe)
+        info = {}
+        reward = 0.0
 
+        # --- Logic for taking an action on a single pipe ---
         pipe_name = self.pipe_names[self.current_pipe_index]
         old_diameter = self.current_network.get_link(pipe_name).diameter
 
+        # Action 0 is "do nothing"
         if action > 0:
             new_diameter = self.pipe_diameter_options[action - 1]
-            if new_diameter < old_diameter:
+            # MODIFIED: Only allow upgrades
+            if new_diameter > old_diameter: 
                 self.current_network.get_link(pipe_name).diameter = new_diameter
                 self.actions_this_timestep.append((pipe_name, new_diameter))
 
         self.current_pipe_index += 1
 
+        # --- Logic for when all pipes have been decided for the current network state ---
         if self.current_pipe_index >= len(self.pipe_names):
+            # First, simulate the network with the agent's chosen actions
             results, metrics = self.simulate_network(self.current_network)
             
             if results:
-                # Update pressures based on actions
-                for node_name in self.node_names:
-                    self.node_pressures[node_name] = np.mean(results.node['pressure'][node_name])
-                
-                # These would be calculated by your logic
-                downgraded = bool(self.actions_this_timestep)
-                disconnected, bad_actions = (False, []) # Placeholder for check_disconnections
-                
-                # Your reward calculation function
-                reward, _, _, _, _, _, _ = calculate_reward(
+                # --- MODIFICATION START: Calculate max_pd for reward normalization ---
+                max_pd = 0.0
+                try:
+                    # Create a temporary copy of the network to find the worst-case pressure deficit
+                    network_path = self.network_states[self.current_time_step]
+                    wn_copy = wntr.network.WaterNetworkModel(network_path)
+                    
+                    # Get the smallest available pipe diameter
+                    min_diameter = min(p['diameter'] for p in self.pipes.values())
+
+                    # Set all pipes in the temporary network to the smallest diameter
+                    for p_name in wn_copy.pipe_name_list:
+                        wn_copy.get_link(p_name).diameter = min_diameter
+                    
+                    # Simulate this "worst-case" network
+                    max_pd_results, _ = self.simulate_network(wn_copy)
+                    if max_pd_results:
+                        max_pd_metrics = evaluate_network_performance(wn_copy, max_pd_results)
+                        max_pd = max_pd_metrics.get('total_pressure_deficit', 0.0)
+
+                except Exception as e:
+                    print(f"Error calculating max_pd: {e}")
+                # --- MODIFICATION END ---
+
+                downgraded = False # Downgrades are prevented by the action mask
+                disconnected, bad_actions = (False, []) # Placeholder
+
+                # MODIFICATION: Pass the calculated max_pd to the reward function
+                reward_tuple = calculate_reward(
                     self.current_network, self.original_diameters_this_timestep, 
                     self.actions_this_timestep, self.pipes, metrics, 
-                    self.labour_cost, downgraded, disconnected, bad_actions
+                    self.labour_cost, downgraded, disconnected, bad_actions,
+                    max_pd=max_pd
                 )
-            else:
+                reward = reward_tuple[0]
+                
+                # This is the data your plotting callback will log.
+                info = {
+                    'reward': reward,
+                    'cost_of_intervention': reward_tuple[1],
+                    'pressure_deficit': reward_tuple[2],
+                    'demand_satisfaction': reward_tuple[3],
+                    'pipe_changes': len(self.actions_this_timestep),
+                    'upgraded_pipes': len(self.actions_this_timestep),
+                }
+
+            else: # Main simulation failed
                 reward = -1000.0
+                info = {} # Return empty info on failure
             
+            # --- Reset for the next major timestep in the scenario ---
             self.current_time_step += 1
             self.current_pipe_index = 0
             self.actions_this_timestep = []
 
             if self.current_time_step >= len(self.network_states) or not results:
-                terminated = True
+                terminated = True # End of episode
             else:
-                self._load_network_for_timestep()
+                self._load_network_for_timestep() # Load the next network state
         
+        # Get the observation for the current state (or next state)
         obs = self.get_network_features()
-        info = {'scenario': self.current_scenario, 'time_step': self.current_time_step, 'pipe_index': self.current_pipe_index}
 
         return obs, reward, terminated, truncated, info
 
     def simulate_network(self, network: wntr.network.WaterNetworkModel):
         try:
             results = run_epanet_simulation(network)
+            # Check for NaNs in the results right after simulation
+            if results.node['pressure'].isnull().values.any():
+                print(f"WARNING: NaN pressure values detected in scenario: {self.current_scenario}, time_step: {self.current_time_step}")
             metrics = evaluate_network_performance(network, results)
             return results, metrics
-        except:
+        except Exception as e:
+            # Log the error with context
+            print(f"ERROR: Simulation failed for scenario: {self.current_scenario}, time_step: {self.current_time_step}. Error: {e}")
             return None, None
             
     def get_action_mask(self) -> np.ndarray:
         mask = np.ones(self.action_space.n, dtype=bool)
         current_diameter = self.current_network.get_link(self.pipe_names[self.current_pipe_index]).diameter
+        
+        # Action 0 is "do nothing", which we always allow.
+        mask[0] = True
+        
+        # Iterate through the diameter options to determine valid upgrades.
         for i, new_diameter in enumerate(self.pipe_diameter_options):
-            if new_diameter >= current_diameter:
-                mask[i + 1] = False
+            # The action is valid only if the new diameter is an upgrade.
+            if new_diameter > current_diameter:
+                mask[i + 1] = True  # Allow this action
+            else:
+                mask[i + 1] = False # Disallow this action
+                
         return mask
 
     def close(self):

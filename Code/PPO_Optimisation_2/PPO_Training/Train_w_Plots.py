@@ -3,15 +3,18 @@ import torch
 import time
 import multiprocessing as mp
 import os
+import datetime
+import matplotlib.pyplot as plt
 
 from stable_baselines3.common.vec_env import SubprocVecEnv
+from stable_baselines3.common.vec_env import DummyVecEnv
 
 # Import your existing modules
 from PPO_Environment import WNTRGymEnv
 from Actor_Critic_Nets2 import GraphPPOAgent
 from Plot_Agents import PlottingCallback, plot_training_and_performance, plot_action_analysis, plot_final_agent_rewards_by_scenario
 
-def train_agent_with_monitoring():
+def train_agent_with_monitoring(time_steps = 50000):
     """
     Main training function for the GNN-based PPO agent with monitoring.
     """
@@ -38,7 +41,8 @@ def train_agent_with_monitoring():
         return env
 
     num_cpu = mp.cpu_count()
-    vec_env = SubprocVecEnv([make_env for _ in range(num_cpu)])
+    # vec_env = SubprocVecEnv([make_env for _ in range(num_cpu)])
+    vec_env = DummyVecEnv([make_env])
     
     ppo_config = {
         "learning_rate": 3e-4, "n_steps": 2048, "batch_size": 64, "n_epochs": 10,
@@ -49,15 +53,19 @@ def train_agent_with_monitoring():
     agent = GraphPPOAgent(vec_env, pipes, **ppo_config)
     
     # Instantiate the callback
-    plotting_callback = PlottingCallback()
+    plotting_callback = PlottingCallback() # This will log data during training
 
     print("Starting training with monitoring...")
     start_time = time.time()
-    agent.train(total_timesteps=200000, callback=plotting_callback)
+    agent.train(total_timesteps=time_steps, callback=plotting_callback)
     training_time = time.time() - start_time
     print(f"Training completed in {training_time:.2f} seconds")
     
-    model_path = "trained_gnn_ppo_water_network"
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    script = os.path.dirname(__file__)
+    agents_dir = os.path.join(script, "agents")
+    model_path = os.path.join(agents_dir, f"trained_gnn_ppo_wn_{timestamp}")
     agent.save(model_path)
     print(f"Model saved to {model_path}")
     
@@ -103,20 +111,64 @@ def evaluate_agent_by_scenario(model_path, pipes, scenarios, num_episodes_per_sc
     return scenario_rewards
 
 
+# In Train_w_Plots.py
+
 if __name__ == "__main__":
+
     # 1. Train the agent and log data
-    model_path, pipes, scenarios = train_agent_with_monitoring()
+    model_path, pipes, scenarios = train_agent_with_monitoring(time_steps=5000)
     
-    # 2. Generate plots from the training log
-    print("\nGenerating plots from training log...")
-    plot_training_and_performance()
-    plot_action_analysis()
+    # --- MODIFICATION START: Capture returned figure objects ---
+    print("\nGenerating plot data...")
+
+    # Find log file path
+    script = os.path.dirname(__file__)
+    log_file = os.path.join(script, "Plots", "training_log.csv")
+
+     # Add existence check
+    if not os.path.exists(log_file):
+        print(f"Warning: Log file not found at {log_file}")
+        print("Check that PlottingCallback is correctly saving data during training")
+        # Continue with the evaluation even if plots can't be generated
+        figs_performance = None
+        fig_actions = None
+    else:
+        figs_performance = plot_training_and_performance(log_file)
+        fig_actions = plot_action_analysis(log_file)
 
     # 3. Evaluate the final agent on each scenario
     scenario_results = evaluate_agent_by_scenario(model_path, pipes, scenarios)
 
     # 4. Plot the final scenario-based rewards
-    print("\nGenerating final agent performance plot...")
-    plot_final_agent_rewards_by_scenario(scenario_results)
+    print("\nGenerating final agent performance plot data...")
+    fig_scenarios = plot_final_agent_rewards_by_scenario(scenario_results)
     
-    print("\nAll tasks complete!")
+    # --- MODIFICATION: Explicitly save all captured figures ---
+    print("\nSaving all generated plots...")
+    # Extract timestamp from the model path to name plots consistently
+    model_timestamp = os.path.basename(model_path).replace('trained_gnn_ppo_wn_', '')
+
+    # Define save directories
+    perf_save_path = os.path.join("Plots", "Training and Performance")
+    action_save_path = os.path.join("Plots", "Action Analysis")
+    scenario_save_path = os.path.join("Plots", "Reward_by_Scenario")
+    
+    # Create directories if they don't exist
+    os.makedirs(perf_save_path, exist_ok=True)
+    os.makedirs(action_save_path, exist_ok=True)
+    os.makedirs(scenario_save_path, exist_ok=True)
+    
+    # Save the figures using the object-oriented method
+    if figs_performance:
+        figs_performance[0].savefig(os.path.join(perf_save_path, f"training_metrics_{model_timestamp}.png"))
+        figs_performance[1].savefig(os.path.join(perf_save_path, f"stepwise_performance_{model_timestamp}.png"))
+    if fig_actions:
+        fig_actions.savefig(os.path.join(action_save_path, f"action_analysis_{model_timestamp}.png"))
+    if fig_scenarios:
+        fig_scenarios.savefig(os.path.join(scenario_save_path, f"scenario_rewards_{model_timestamp}.png"))
+    
+    print("All plots saved.")
+    # --- MODIFICATION END ---
+    
+    print("\nAll tasks complete! Displaying plots...")
+    plt.show()  # This will now display all four figures at once

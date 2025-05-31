@@ -162,6 +162,7 @@ def run_epanet_simulation(wn, static=False):  # Changed default to False
 
     # Set hydraulic options for better convergence
     wn.options.hydraulic.accuracy = 0.01
+    wn.options.hydraulic.trials = 100 # Default is 40, increased to reduce possibility of failure to converge (may slow training)
     wn.options.hydraulic.headloss = 'H-W'  # Hazen-Williams
     wn.options.hydraulic.demand_model = 'DDA'  # Demand-driven analysis is more stable
     wn.options.hydraulic.demand_multiplier = 1.0  # No multiplier for demand

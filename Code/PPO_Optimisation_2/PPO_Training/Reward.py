@@ -108,7 +108,7 @@ def calculate_reward(
     max_cost = compute_total_cost(initial_pipes, max_actions, labour_cost, energy_cost, pipes, original_pipe_diameters)
 
     print("-------------------------------------")
-    cost_ratio = 1 - (cost / max_cost) if max_cost > 0 else 0 # Where a cost of 1 is the best possible outcome
+    cost_ratio = max(1 - (cost / max_cost), 0) if max_cost > 0 else 0 # Where a cost of 1 is the best possible outcome
 
     # ------------------------------------
     
@@ -132,10 +132,11 @@ def calculate_reward(
               reward_weights[3] * disconnection_multiplier,
               0)  # Ensure reward is non-negative
     
-    if downgraded_pipes:
-        reward = 0 # Overwrite reward if any pipes were downgraded to smaller pipes
+    """Relaxing this because action mask should prevent any downgrades"""
+    # if downgraded_pipes:
+    #     reward = 0 # Overwrite reward if any pipes were downgraded to smaller pipes
     
-    print(f"Reward: {reward} (Cost Ratio: {cost_ratio}, PD Ratio: {pd_ratio}, Demand Satisfaction: {demand_satisfaction}, Disconnection Multiplier: {disconnection_multiplier}, Downgraded Pipes: {downgraded_pipes})")
+    print(f"Reward: {reward} (Cost Ratio: {cost_ratio}, PD Ratio: {pd_ratio}, Demand Satisfaction: {demand_satisfaction}, Disconnection Multiplier: {disconnection_multiplier}")
     
     print("------------------------------------")
 

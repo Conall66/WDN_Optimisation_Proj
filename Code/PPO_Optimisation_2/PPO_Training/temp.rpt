@@ -1,4 +1,4 @@
-  Page 1                                    Sat May 31 19:36:10 2025
+  Page 1                                    Sun Jun 01 00:54:44 2025
 
   ******************************************************************
   *                           E P A N E T                          *
@@ -7,24 +7,24 @@
   *                         Version 2.2                            *
   ******************************************************************
   
-  Analysis begun Sat May 31 19:36:10 2025
+  Analysis begun Sun Jun 01 00:54:44 2025
 
    
   Hydraulic Status:
   -----------------------------------------------------------------------
      0:00:00: Balancing the network:
 
-              Trial  1: relative flow change = 1.049772
-              Trial  2: relative flow change = 0.339914
+              Trial  1: relative flow change = 1.050982
+              Trial  2: relative flow change = 0.343393
               Pipe 142 switched from open to closed
               Pipe 143 switched from open to closed
               Pump 78 switched from open to closed
-              Trial  3: relative flow change = 1.035933
-              Trial  4: relative flow change = 0.088772
-              Trial  5: relative flow change = 0.018205
-              Trial  6: relative flow change = 0.001675
-                        maximum  flow change = 4.0726 for Link 34
-                        maximum  head error  = 0.0045 for Link 34
+              Trial  3: relative flow change = 1.028316
+              Trial  4: relative flow change = 0.088098
+              Trial  5: relative flow change = 0.020568
+              Trial  6: relative flow change = 0.003316
+                        maximum  flow change = 7.9831 for Link 34
+                        maximum  head error  = 0.0172 for Link 34
 
      0:00:00: Balanced after 6 trials
      0:00:00: Reservoir 40 is emptying
@@ -39,13 +39,13 @@
    
      1:00:00: Balancing the network:
 
-              Trial  1: relative flow change = 0.212284
-              Trial  2: relative flow change = 0.185247
+              Trial  1: relative flow change = 0.220901
+              Trial  2: relative flow change = 0.191812
               Pump 78 switched from open to closed
-              Trial  3: relative flow change = 0.071037
+              Trial  3: relative flow change = 0.076802
               Trial  4: relative flow change = 0.000000
                         maximum  flow change = 0.0000 for Link 4
-                        maximum  head error  = 0.0000 for Link 3
+                        maximum  head error  = 0.0000 for Link 2
 
      1:00:00: Balanced after 4 trials
    
@@ -54,13 +54,13 @@
    
      2:00:00: Balancing the network:
 
-              Trial  1: relative flow change = 0.212254
-              Trial  2: relative flow change = 0.185247
+              Trial  1: relative flow change = 0.220786
+              Trial  2: relative flow change = 0.191811
               Pump 78 switched from open to closed
-              Trial  3: relative flow change = 0.071037
+              Trial  3: relative flow change = 0.076802
               Trial  4: relative flow change = 0.000000
                         maximum  flow change = 0.0000 for Link 4
-                        maximum  head error  = 0.0000 for Link 1
+                        maximum  head error  = 0.0000 for Link 3
 
      2:00:00: Balanced after 4 trials
    
@@ -69,10 +69,10 @@
    
      3:00:00: Balancing the network:
 
-              Trial  1: relative flow change = 0.367309
-              Trial  2: relative flow change = 0.249433
+              Trial  1: relative flow change = 0.375323
+              Trial  2: relative flow change = 0.256172
               Pump 78 switched from open to closed
-              Trial  3: relative flow change = 0.184052
+              Trial  3: relative flow change = 0.192759
               Trial  4: relative flow change = 0.000000
                         maximum  flow change = 0.0000 for Link 4
                         maximum  head error  = 0.0000 for Link 1
@@ -84,13 +84,13 @@
    
      4:00:00: Balancing the network:
 
-              Trial  1: relative flow change = 0.324047
-              Trial  2: relative flow change = 0.249433
+              Trial  1: relative flow change = 0.332582
+              Trial  2: relative flow change = 0.256172
               Pump 78 switched from open to closed
-              Trial  3: relative flow change = 0.184052
+              Trial  3: relative flow change = 0.192759
               Trial  4: relative flow change = 0.000000
                         maximum  flow change = 0.0000 for Link 4
-                        maximum  head error  = 0.0000 for Link 3
+                        maximum  head error  = 0.0000 for Link 1
 
      4:00:00: Balanced after 4 trials
    
@@ -99,13 +99,13 @@
    
      5:00:00: Balancing the network:
 
-              Trial  1: relative flow change = 0.251602
-              Trial  2: relative flow change = 0.216308
+              Trial  1: relative flow change = 0.260138
+              Trial  2: relative flow change = 0.223226
               Pump 78 switched from open to closed
-              Trial  3: relative flow change = 0.098560
+              Trial  3: relative flow change = 0.104949
               Trial  4: relative flow change = 0.000000
                         maximum  flow change = 0.0000 for Link 4
-                        maximum  head error  = 0.0000 for Link 1
+                        maximum  head error  = 0.0000 for Link 8
 
      5:00:00: Balanced after 4 trials
    
@@ -114,13 +114,14 @@
    
      6:00:00: Balancing the network:
 
-              Trial  1: relative flow change = 0.395320
-              Trial  2: relative flow change = 0.031724
-              Trial  3: relative flow change = 0.000000
+              Trial  1: relative flow change = 0.390689
+              Trial  2: relative flow change = 0.058746
+              Trial  3: relative flow change = 0.022505
+              Trial  4: relative flow change = 0.000000
                         maximum  flow change = 0.0000 for Link 4
-                        maximum  head error  = 0.0000 for Link 3
+                        maximum  head error  = 0.0000 for Link 2
 
-     6:00:00: Balanced after 3 trials
+     6:00:00: Balanced after 4 trials
      6:00:00: Pump 78 changed from closed because cannot deliver head to open
    
   WARNING: Negative pressures at 6:00:00 hrs.
@@ -128,8 +129,8 @@
      7:00:00: Balancing the network:
 
               Trial  1: relative flow change = 0.000000
-                        maximum  flow change = 0.0000 for Link 40
-                        maximum  head error  = 0.0000 for Link 1
+                        maximum  flow change = 0.0000 for Link 4
+                        maximum  head error  = 0.0000 for Link 2
 
      7:00:00: Balanced after 1 trials
    
@@ -150,7 +151,7 @@
               Trial  1: relative flow change = 0.166667
               Trial  2: relative flow change = 0.000000
                         maximum  flow change = 0.0000 for Link 4
-                        maximum  head error  = 0.0000 for Link 78
+                        maximum  head error  = 0.0000 for Link 2
 
      9:00:00: Balanced after 2 trials
    
@@ -159,8 +160,8 @@
     10:00:00: Balancing the network:
 
               Trial  1: relative flow change = 0.000000
-                        maximum  flow change = 0.0000 for Link 4
-                        maximum  head error  = 0.0000 for Link 1
+                        maximum  flow change = 0.0000 for Link 78
+                        maximum  head error  = 0.0000 for Link 79
 
     10:00:00: Balanced after 1 trials
    
@@ -169,8 +170,8 @@
     11:00:00: Balancing the network:
 
               Trial  1: relative flow change = 0.000000
-                        maximum  flow change = 0.0000 for Link 4
-                        maximum  head error  = 0.0000 for Link 3
+                        maximum  flow change = 0.0000 for Link 40
+                        maximum  head error  = 0.0000 for Link 2
 
     11:00:00: Balanced after 1 trials
    
@@ -178,10 +179,10 @@
    
     12:00:00: Balancing the network:
 
-              Trial  1: relative flow change = 0.691866
-              Trial  2: relative flow change = 0.314185
+              Trial  1: relative flow change = 0.693968
+              Trial  2: relative flow change = 0.317564
               Trial  3: relative flow change = 0.000000
-                        maximum  flow change = 0.0000 for Link 4
+                        maximum  flow change = 0.0000 for Link 40
                         maximum  head error  = 0.0000 for Link 1
 
     12:00:00: Balanced after 3 trials
@@ -191,7 +192,7 @@
     13:00:00: Balancing the network:
 
               Trial  1: relative flow change = 0.000000
-                        maximum  flow change = 0.0000 for Link 4
+                        maximum  flow change = 0.0000 for Link 40
                         maximum  head error  = 0.0000 for Link 1
 
     13:00:00: Balanced after 1 trials
@@ -210,9 +211,9 @@
    
     15:00:00: Balancing the network:
 
-              Trial  1: relative flow change = 0.106052
-              Trial  2: relative flow change = 0.000729
-                        maximum  flow change = 5.6800 for Link 78
+              Trial  1: relative flow change = 0.107462
+              Trial  2: relative flow change = 0.001624
+                        maximum  flow change = 12.3782 for Link 78
                         maximum  head error  = 0.0000 for Link 1
 
     15:00:00: Balanced after 2 trials
@@ -223,7 +224,7 @@
     16:00:00: Balancing the network:
 
               Trial  1: relative flow change = 0.000000
-                        maximum  flow change = 0.0000 for Link 40
+                        maximum  flow change = 0.0000 for Link 4
                         maximum  head error  = 0.0000 for Link 3
 
     16:00:00: Balanced after 1 trials
@@ -233,9 +234,9 @@
    
     17:00:00: Balancing the network:
 
-              Trial  1: relative flow change = 0.062856
-              Trial  2: relative flow change = 0.005524
-                        maximum  flow change = 43.0617 for Link 78
+              Trial  1: relative flow change = 0.064329
+              Trial  2: relative flow change = 0.004713
+                        maximum  flow change = 35.9284 for Link 78
                         maximum  head error  = 0.0000 for Link 2
 
     17:00:00: Balanced after 2 trials
@@ -244,10 +245,10 @@
    
     18:00:00: Balancing the network:
 
-              Trial  1: relative flow change = 0.117236
+              Trial  1: relative flow change = 0.118824
               Trial  2: relative flow change = 0.000000
                         maximum  flow change = 0.0000 for Link 4
-                        maximum  head error  = 0.0000 for Link 1
+                        maximum  head error  = 0.0000 for Link 3
 
     18:00:00: Balanced after 2 trials
    
@@ -255,10 +256,10 @@
    
     19:00:00: Balancing the network:
 
-              Trial  1: relative flow change = 0.066133
-              Trial  2: relative flow change = 0.002684
-                        maximum  flow change = 19.3151 for Link 78
-                        maximum  head error  = 0.0000 for Link 3
+              Trial  1: relative flow change = 0.067772
+              Trial  2: relative flow change = 0.004240
+                        maximum  flow change = 29.8337 for Link 78
+                        maximum  head error  = 0.0000 for Link 2
 
     19:00:00: Balanced after 2 trials
    
@@ -267,8 +268,8 @@
     20:00:00: Balancing the network:
 
               Trial  1: relative flow change = 0.000000
-                        maximum  flow change = 0.0000 for Link 40
-                        maximum  head error  = 0.0000 for Link 3
+                        maximum  flow change = 0.0000 for Link 4
+                        maximum  head error  = 0.0000 for Link 2
 
     20:00:00: Balanced after 1 trials
    
@@ -276,11 +277,11 @@
    
     21:00:00: Balancing the network:
 
-              Trial  1: relative flow change = 0.136895
-              Trial  2: relative flow change = 0.022106
-              Trial  3: relative flow change = 0.006688
-                        maximum  flow change = 44.1134 for Link 78
-                        maximum  head error  = 0.0000 for Link 3
+              Trial  1: relative flow change = 0.138780
+              Trial  2: relative flow change = 0.024056
+              Trial  3: relative flow change = 0.009159
+                        maximum  flow change = 59.0766 for Link 78
+                        maximum  head error  = 0.0000 for Link 1
 
     21:00:00: Balanced after 3 trials
    
@@ -288,13 +289,13 @@
    
     22:00:00: Balancing the network:
 
-              Trial  1: relative flow change = 0.120810
-              Trial  2: relative flow change = 0.047757
+              Trial  1: relative flow change = 0.122674
+              Trial  2: relative flow change = 0.050197
               Pump 78 switched from open to closed
-              Trial  3: relative flow change = 0.041218
+              Trial  3: relative flow change = 0.047953
               Trial  4: relative flow change = 0.000000
                         maximum  flow change = 0.0000 for Link 4
-                        maximum  head error  = 0.0000 for Link 1
+                        maximum  head error  = 0.0000 for Link 3
 
     22:00:00: Balanced after 4 trials
     22:00:00: Pump 78 changed from open to closed because cannot deliver head
@@ -304,13 +305,13 @@
    
     23:00:00: Balancing the network:
 
-              Trial  1: relative flow change = 0.070741
-              Trial  2: relative flow change = 0.033526
+              Trial  1: relative flow change = 0.078982
+              Trial  2: relative flow change = 0.036073
               Pump 78 switched from open to closed
-              Trial  3: relative flow change = 0.041218
+              Trial  3: relative flow change = 0.047953
               Trial  4: relative flow change = 0.000000
                         maximum  flow change = 0.0000 for Link 4
-                        maximum  head error  = 0.0000 for Link 1
+                        maximum  head error  = 0.0000 for Link 2
 
     23:00:00: Balanced after 4 trials
    
@@ -319,17 +320,17 @@
    
     24:00:00: Balancing the network:
 
-              Trial  1: relative flow change = 0.156581
-              Trial  2: relative flow change = 0.044245
+              Trial  1: relative flow change = 0.164512
+              Trial  2: relative flow change = 0.099249
               Pump 78 switched from open to closed
-              Trial  3: relative flow change = 0.070013
+              Trial  3: relative flow change = 0.026083
               Trial  4: relative flow change = 0.000000
                         maximum  flow change = 0.0000 for Link 4
-                        maximum  head error  = 0.0000 for Link 3
+                        maximum  head error  = 0.0000 for Link 2
 
     24:00:00: Balanced after 4 trials
    
   WARNING: Negative pressures at 24:00:00 hrs.
   WARNING: Pump 78 closed because cannot deliver head at 24:00:00 hrs.
    
-  Analysis ended Sat May 31 19:36:10 2025
+  Analysis ended Sun Jun 01 00:54:44 2025

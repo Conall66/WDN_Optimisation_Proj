@@ -366,9 +366,9 @@ class GraphPPOAgent:
             **default_ppo_kwargs
         )
     
-    def train(self, total_timesteps: int):
+    def train(self, total_timesteps: int, callback = None):
         """Train the agent"""
-        self.agent.learn(total_timesteps=total_timesteps)
+        self.agent.learn(total_timesteps=total_timesteps, callback = callback)
     
     def predict(self, observation, deterministic: bool = True):
         """Make prediction"""
@@ -480,7 +480,7 @@ def create_and_train_gnn_agent():
     
     # Create and train agent
     agent = GraphPPOAgent(env, pipes, verbose=2)
-    agent.train(total_timesteps=50000)
+    agent.train(total_timesteps=20000)
     
     # Save the trained agent
     model_path = os.path.join(agents_dir, "gnn_ppo_water_network")

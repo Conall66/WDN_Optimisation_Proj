@@ -1,38 +1,49 @@
+
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 from stable_baselines3.common.callbacks import BaseCallback
 import os
+import datetime
 
 class PlottingCallback(BaseCallback):
     """
     A custom callback that logs additional metrics and saves them to a CSV file
-    for later plotting.
+    for later plotting. CORRECTED for modern stable-baselines3 API.
     """
-    def __init__(self, verbose=0):
+    def __init__(self, verbose=2): # Change to verbose = 1 for real training
         super(PlottingCallback, self).__init__(verbose)
         self.log_data = []
 
     def _on_step(self) -> bool:
-        # Log standard SB3 metrics
-        log_dict = self.logger.get_log_dict()
-        
-        # Log custom data from the 'info' dictionary
-        # The info dict is a list since we are using a VecEnv
-        for info in self.model.env.buf_infos:
-            if info: # Check if info is not empty
+        """
+        This method is called after each step in the training loop.
+        """
+        # Access the 'infos' list from the training loop's local variables.
+        # This is the modern way to get info from vectorized environments.
+        for info in self.locals.get("infos", []):
+            
+            # The actual info dict may be nested under 'final_info' at the end of an episode
+            custom_info = info.get('final_info', info)
+            
+            # Only log if the info dictionary is not empty and contains our custom data.
+            # This check is important because info is empty on intermediate steps.
+            if custom_info and 'reward' in custom_info:
                 log_entry = {
                     'timesteps': self.num_timesteps,
-                    'total_reward': log_dict.get('train/reward'),
-                    'kl_divergence': log_dict.get('train/approx_kl'),
-                    'clip_fraction': log_dict.get('train/clip_fraction'),
-                    'entropy_loss': log_dict.get('train/entropy_loss'),
-                    'step_reward': info.get('reward'),
-                    'cost_of_intervention': info.get('cost_of_intervention'),
-                    'pressure_deficit': info.get('pressure_deficit'),
-                    'demand_satisfaction': info.get('demand_satisfaction'),
-                    'pipe_changes': info.get('pipe_changes'),
-                    'downgraded_pipes': info.get('downgraded_pipes'),
+                    # Access standard training metrics from the logger
+                    'total_reward': self.logger.name_to_value.get('train/reward'),
+                    'kl_divergence': self.logger.name_to_value.get('train/approx_kl'),
+                    'clip_fraction': self.logger.name_to_value.get('train/clip_fraction'),
+                    'entropy_loss': self.logger.name_to_value.get('train/entropy_loss'),
+                    
+                    # Get custom metrics from the environment's info dictionary
+                    'step_reward': custom_info.get('reward'),
+                    'cost_of_intervention': custom_info.get('cost_of_intervention'),
+                    'pressure_deficit': custom_info.get('pressure_deficit'),
+                    'demand_satisfaction': custom_info.get('demand_satisfaction'),
+                    'pipe_changes': custom_info.get('pipe_changes'),
+                    'downgraded_pipes': custom_info.get('downgraded_pipes'),
                 }
                 self.log_data.append(log_entry)
         return True
@@ -42,16 +53,24 @@ class PlottingCallback(BaseCallback):
         This method is called at the end of training.
         It saves the collected data to a CSV file.
         """
+        if not self.log_data:
+            print("Warning: No data was logged by the PlottingCallback. Check if the environment's info dict is being populated correctly.")
+            return
+            
         df = pd.DataFrame(self.log_data)
-        df.to_csv("training_log.csv", index=False)
-        print("Training log saved to training_log.csv")
+        script = os.path.dirname(__file__)
+        plots_dir = os.path.join(script, "Plots")
+        os.makedirs(plots_dir, exist_ok=True)
+        log_path = os.path.join(plots_dir, "training_log.csv")
+        df.to_csv(log_path, index=False)
+        print(f"Training log saved to {log_path}")
 
 def plot_training_and_performance(log_file="training_log.csv"):
     """
     Plots the main training progress and performance metrics from the log file.
     """
     script = os.path.dirname(__file__)
-    save_path = os.path.join(script, "Plots", "Reward_by_Scenario")
+    save_path = os.path.join(script, "Plots", "Training and Performance")
     if not os.path.exists(save_path):
         os.makedirs(save_path)
 
@@ -86,7 +105,7 @@ def plot_training_and_performance(log_file="training_log.csv"):
     axs1[1, 1].set_ylabel('Entropy Loss')
 
     plt.tight_layout(rect=[0, 0, 1, 0.96])
-    plt.savefig("training_progress_metrics.png")
+    # plt.savefig(os.path.join(save_path, "training_progress_metrics.png"))
     plt.show()
 
     # Plot 2: Step-wise Performance
@@ -114,8 +133,10 @@ def plot_training_and_performance(log_file="training_log.csv"):
     axs2[1, 1].set_ylabel('Demand Satisfaction (%)')
 
     plt.tight_layout(rect=[0, 0, 1, 0.96])
-    plt.savefig(os.path.join(save_path, "stepwise_performance_metrics.png"))
+    # plt.savefig(os.path.join(save_path, "stepwise_performance_metrics.png"))
     plt.show()
+
+    return [fig1, fig2]
 
 def plot_action_analysis(log_file="training_log.csv"):
     """
@@ -128,13 +149,13 @@ def plot_action_analysis(log_file="training_log.csv"):
     if not os.path.exists(save_path):
         os.makedirs(save_path)
 
-    if not os.path.exists(log_file):
-        print(f"Log file not found: {log_file}")
-        return
+    # if not os.path.exists(log_file):
+    #     print(f"Log file not found: {log_file}")
+    #     return
 
     df = pd.read_csv(log_file).dropna()
     
-    plt.figure(figsize=(12, 8))
+    fig = plt.figure(figsize=(12, 8))
     plt.title('Action Analysis Metrics vs. Timesteps', fontsize=16)
     
     plt.plot(df['timesteps'], df['step_reward'], label='Reward by Step', alpha=0.7)
@@ -146,9 +167,10 @@ def plot_action_analysis(log_file="training_log.csv"):
     plt.legend()
     plt.grid(True)
     plt.tight_layout()
-    plt.savefig(os.path.join(save_path, "action_analysis_metrics.png"))
+    # plt.savefig(os.path.join(save_path, "action_analysis_metrics.png"))
     plt.show()
 
+    return fig
 
 def plot_final_agent_rewards_by_scenario(scenario_rewards: dict):
     """
@@ -166,7 +188,7 @@ def plot_final_agent_rewards_by_scenario(scenario_rewards: dict):
     scenarios = list(scenario_rewards.keys())
     rewards = list(scenario_rewards.values())
     
-    plt.figure(figsize=(15, 8))
+    fig = plt.figure(figsize=(15, 8))
     plt.bar(scenarios, rewards, color='skyblue')
     
     plt.xlabel('Scenario')
@@ -174,5 +196,7 @@ def plot_final_agent_rewards_by_scenario(scenario_rewards: dict):
     plt.title('Final Agent Reward by Scenario')
     plt.xticks(rotation=45, ha='right')
     plt.tight_layout()
-    plt.savefig(os.path.join(save_path,"final_agent_rewards_by_scenario.png"))
+    # plt.savefig(os.path.join(save_path,"final_agent_rewards_by_scenario.png"))
     plt.show()
+
+    return fig
