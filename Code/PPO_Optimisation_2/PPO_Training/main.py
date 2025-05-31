@@ -13,17 +13,24 @@ import torch
 import time
 from typing import Dict, List
 import matplotlib.pyplot as plt
+import multiprocessing as mp
+import os
+
+from stable_baselines3.common.env_util import make_vec_env
+from stable_baselines3.common.vec_env import SubprocVecEnv
 
 # Import your existing modules
 from PPO_Environment import WNTRGymEnv
-from Actor_Critic_Nets import GraphPPOAgent, GraphAwareWNTREnv
+# from Actor_Critic_Nets import GraphPPOAgent, GraphAwareWNTREnv
+from Actor_Critic_Nets2 import GraphPPOAgent, GraphAwareWNTREnv
 
 def train_gnn_ppo_agent():
     """
-    Main training function for the GNN-based PPO agent
+    Main training function for the GNN-based PPO agent,
+    MODIFIED for parallel environments.
     """
     
-    # Configuration from your original script
+    # Configuration from your original script (remains the same)
     pipes = {
         'Pipe_1': {'diameter': 0.3048, 'unit_cost': 36.58},
         'Pipe_2': {'diameter': 0.4064, 'unit_cost': 56.32},
@@ -40,55 +47,68 @@ def train_gnn_ppo_agent():
         'hanoi_sprawling_1', 'hanoi_sprawling_2', 'hanoi_sprawling_3'
     ]
     
-    print("Creating water distribution network environment...")
-    
-    # Create your base environment
-    base_env = WNTRGymEnv(pipes, scenarios, max_episodes=1000)
-    
-    # Wrap with graph-aware functionality
-    env = GraphAwareWNTREnv(base_env, pipes)
+    print("Creating parallel water distribution network environments...")
 
-    env.reset()  # Initialize the environment
+    # Helper function to create a single environment instance.
+    # This is the standard pattern for creating vectorized environments.
+    def make_env():
+        # NOTE: Using the dictionary-based WNTRGymEnv from previous corrections
+        env = WNTRGymEnv(pipes, scenarios) 
+        return env
+
+    # Set the number of parallel processes to use
+    # num_cpu = 4  # Adjust based on your machine's CPU core count
+
+    # Find CPU core count
+    num_cpu = mp.cpu_count()  # Automatically detect available CPU cores
+
+    # Create the vectorized environment, which runs multiple environments in parallel
+    vec_env = SubprocVecEnv([make_env for i in range(num_cpu)])
     
-    print(f"Environment created with action space: {env.action_space}")
-    print(f"Observation space: {env.observation_space}")
-    
-    # PPO hyperparameters optimized for this problem
+    # PPO hyperparameters optimized for this problem (remains the same)
     ppo_config = {
         "learning_rate": 3e-4,
-        "n_steps": 2048,  # Number of steps to run for each environment per update
-        "batch_size": 64,  # Minibatch size
-        "n_epochs": 10,    # Number of epoch when optimizing the surrogate loss
-        "gamma": 0.99,     # Discount factor
-        "gae_lambda": 0.95, # Factor for trade-off of bias vs variance for GAE
-        "clip_range": 0.2,  # Clipping parameter
-        "ent_coef": 0.01,   # Entropy coefficient for the loss calculation
-        "vf_coef": 0.5,     # Value function coefficient for the loss calculation
-        "max_grad_norm": 0.5, # Maximum value for the gradient clipping
-        "verbose": 2
+        "n_steps": 2048,
+        "batch_size": 64,
+        "n_epochs": 10,
+        "gamma": 0.99,
+        "gae_lambda": 0.95,
+        "clip_range": 0.2,
+        "ent_coef": 0.01,
+        "vf_coef": 0.5,
+        "max_grad_norm": 0.5,
+        "verbose": 1 # Changed to 1 for cleaner logs with parallel envs
     }
     
-    print("Creating GNN-based PPO agent...")
+    print(f"Creating GNN-based PPO agent for {num_cpu} parallel environments...")
     
-    # Create the agent
-    agent = GraphPPOAgent(env, pipes, **ppo_config)
-    
+    # Create the agent, passing the new vectorized environment
+    agent = GraphPPOAgent(vec_env, pipes, **ppo_config)
+
     print("Starting training...")
     start_time = time.time()
     
-    # Train the agent
-    total_timesteps = 50000  # Low values for testing (i.e. 50k) - (1e6 for full training)
-    agent.train(total_timesteps=total_timesteps)
+    # Train the agent. Note that total_timesteps is now distributed across all envs.
+    agent.train(total_timesteps=200000) # e.g., 50k steps per environment
     
     training_time = time.time() - start_time
     print(f"Training completed in {training_time:.2f} seconds")
-    
-    # Save the trained agent
-    model_path = "trained_gnn_ppo_water_network"
+
+    # Create agent folder if it doesn't exist
+    if not os.path.exists("Agents"):
+        os.makedirs("Agents")
+
+    # model_path = "trained_gnn_ppo_water_network"
+    # agent.save(model_path)
+    # print(f"Model saved to {model_path}")
+
+    model_path = "Agents/gnn_ppo_water_network"
     agent.save(model_path)
-    print(f"Model saved to {model_path}")
     
-    return agent, env
+    # Close the parallel environments
+    vec_env.close()
+
+    return agent, WNTRGymEnv(pipes, scenarios) # Return a single env for evaluation
 
 def evaluate_trained_agent(agent, env, num_episodes=5):
     """
@@ -100,20 +120,45 @@ def evaluate_trained_agent(agent, env, num_episodes=5):
     episode_lengths = []
     
     for episode in range(num_episodes):
-        obs = env.reset()
+        # Handle both old and new gym API formats for reset
+        reset_result = env.reset()
+        if isinstance(reset_result, tuple):
+            # New Gymnasium API: reset returns (obs, info)
+            obs, _ = reset_result
+        else:
+            # Old Gym API: reset returns just obs
+            obs = reset_result
+            
         total_reward = 0
         steps = 0
         done = False
         
         print(f"\nEpisode {episode + 1}:")
-        print(f"Scenario: {env.env.current_scenario}")
+        try:
+            print(f"Scenario: {env.env.current_scenario}")
+        except AttributeError:
+            print(f"Scenario: {env.current_scenario}")
         
         while not done:
             # Get action from trained agent
             action, _ = agent.predict(obs, deterministic=True)
             
-            # Take step
-            obs, reward, done, info = env.step(action)
+            # Take step - handle both API formats
+            try:
+                # New Gymnasium API: step returns (obs, reward, terminated, truncated, info)
+                step_result = env.step(action)
+                if len(step_result) == 5:
+                    obs, reward, terminated, truncated, info = step_result
+                    done = terminated or truncated
+                else:
+                    # Old Gym API: step returns (obs, reward, done, info)
+                    obs, reward, done, info = step_result
+            except ValueError as e:
+                # If still encountering errors, print detailed information
+                print(f"Error in step method: {e}")
+                print(f"Action type: {type(action)}, value: {action}")
+                raise
+                
             total_reward += reward
             steps += 1
             
@@ -175,6 +220,41 @@ def compare_with_random_policy(env, num_episodes=3):
     
     return random_rewards
 
+def test_saved_agent(model_path="trained_gnn_ppo_water_network"):
+    """
+    Loads a pre-trained agent and evaluates its performance.
+    """
+    pipes = {
+        'Pipe_1': {'diameter': 0.3048, 'unit_cost': 36.58},
+        'Pipe_2': {'diameter': 0.4064, 'unit_cost': 56.32},
+        'Pipe_3': {'diameter': 0.5080, 'unit_cost': 78.71},
+        'Pipe_4': {'diameter': 0.6096, 'unit_cost': 103.47},
+        'Pipe_5': {'diameter': 0.7620, 'unit_cost': 144.60},
+        'Pipe_6': {'diameter': 1.0160, 'unit_cost': 222.62}
+    }
+    
+    scenarios = [
+        'anytown_densifying_1', 'anytown_densifying_2', 'anytown_densifying_3',
+        'anytown_sprawling_1', 'anytown_sprawling_2', 'anytown_sprawling_3',
+        'hanoi_densifying_1', 'hanoi_densifying_2', 'hanoi_densifying_3',
+        'hanoi_sprawling_1', 'hanoi_sprawling_2', 'hanoi_sprawling_3'
+    ]
+
+    env = WNTRGymEnv(pipes, scenarios)
+    env.reset()
+
+    # 2. Recreate the agent object
+    agent = GraphPPOAgent(env, pipes)
+
+    # 3. Load the saved model weights
+    print(f"Loading trained model from {model_path}.zip...")
+    agent.load(model_path)
+    
+    # 4. Run the evaluation
+    evaluate_trained_agent(agent, env, num_episodes=10) # Evaluate over 10 episodes
+    
+    env.close()
+
 def main():
     """
     Main execution function
@@ -212,4 +292,5 @@ def main():
     #     print("Please check that all dependencies are installed and paths are correct.")
 
 if __name__ == "__main__":
-    main()
+    # main()
+    test_saved_agent('gnn_ppo_water_network')  # Test the saved agent

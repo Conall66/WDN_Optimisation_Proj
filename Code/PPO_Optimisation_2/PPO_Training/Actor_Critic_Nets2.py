@@ -1,10 +1,3 @@
-
-"""
-
-In this file, we define the Actor and Critic neural networks used in the PPO algorithm.
-
-"""
-
 """
 Graph Neural Network Actor-Critic Networks for Water Distribution Network Optimization
 
@@ -30,8 +23,8 @@ import networkx as nx
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 from stable_baselines3.common.policies import ActorCriticPolicy
 from stable_baselines3 import PPO
-import gym
-from gym import spaces
+import gymnasium as gym  # Changed from gym to gymnasium (more up to date version)
+from gymnasium import spaces
 
 class WaterNetworkGraphConverter:
     """
@@ -188,16 +181,26 @@ class GNNFeatureExtractor(BaseFeaturesExtractor):
             nn.Linear(hidden_dim, hidden_dim)
         )
         
-    def forward(self, observations: Dict[str, torch.Tensor]) -> torch.Tensor:
+    def forward(self, observations: torch.Tensor) -> torch.Tensor:
         """
         Forward pass through GNN feature extractor
         
         Args:
-            observations: Dictionary of observations from environment
+            observations: Tensor observations from environment
             
         Returns:
             Extracted features tensor
         """
+        # Handle different input formats
+        if isinstance(observations, dict):
+            # Dictionary observations (from GraphAwareWNTREnv)
+            return self._process_dict_observations(observations)
+        else:
+            # Flattened observations (from base environment)
+            return self._process_flattened_observations(observations)
+    
+    def _process_dict_observations(self, observations: Dict[str, torch.Tensor]) -> torch.Tensor:
+        """Process dictionary-based observations"""
         batch_size = observations['nodes'].shape[0]
         features = []
         
@@ -207,37 +210,68 @@ class GNNFeatureExtractor(BaseFeaturesExtractor):
             edges = observations['edges'][i]
             globals_data = observations['globals'][i]
             
-            # Construct a graph data object
-            # Note: This is simplified - in practice you'd need to create proper edge_index
-            edge_count = (edges.sum(dim=1) != 0).sum().item()  # Count non-zero rows
-            node_count = (nodes.sum(dim=1) != 0).sum().item()  # Count non-zero rows
-            
-            if edge_count == 0 or node_count == 0:
-                # Fallback for empty graphs
-                feature = torch.zeros(self.hidden_dim, device=nodes.device)
-            else:
-                # Process non-empty nodes and edges
-                node_features = F.relu(self.node_embedding(nodes[:node_count]))
-                
-                # Simplified feature extraction when proper graph structure isn't available
+            # Process non-zero nodes
+            node_mask = (nodes.sum(dim=1) != 0)
+            if node_mask.sum() > 0:
+                valid_nodes = nodes[node_mask]
+                node_features = F.relu(self.node_embedding(valid_nodes))
                 graph_features = torch.mean(node_features, dim=0)
-                global_features = F.relu(self.global_mlp(globals_data))
-                
-                # Combine features
-                combined_features = torch.cat([graph_features, global_features])
-                feature = self.final_mlp(combined_features)
+            else:
+                graph_features = torch.zeros(self.hidden_dim, device=nodes.device)
             
+            # Process global features
+            global_features = F.relu(self.global_mlp(globals_data))
+            
+            # Combine features
+            combined_features = torch.cat([graph_features, global_features])
+            feature = self.final_mlp(combined_features)
             features.append(feature)
         
         return torch.stack(features)
     
-    def _process_flattened_observation(self, obs: torch.Tensor) -> torch.Tensor:
+    def _process_flattened_observations(self, observations: torch.Tensor) -> torch.Tensor:
         """
         Process flattened observation (fallback when graph data isn't directly available)
         """
-        # Simple MLP processing as fallback
-        x = F.relu(self.node_embedding(obs[:4].unsqueeze(0)))
-        return self.final_mlp(torch.cat([x.flatten(), torch.zeros(self.hidden_dim)]))
+        batch_size = observations.shape[0]
+        features = []
+        
+        for i in range(batch_size):
+            obs = observations[i]
+            
+            # Simple processing for flattened observations
+            # Assume the first few elements are node features
+            if len(obs) >= 4:
+                # Use first 4 elements as representative node features
+                node_input = obs[:4].unsqueeze(0)
+                node_features = F.relu(self.node_embedding(node_input))
+                graph_features = node_features.flatten()
+            else:
+                graph_features = torch.zeros(self.hidden_dim, device=obs.device)
+            
+            # Create dummy global features if not available
+            global_input = torch.zeros(3, device=obs.device)
+            if len(obs) > 4:
+                # Use some elements from the observation as global features
+                available_elements = min(3, len(obs) - 4)
+                global_input[:available_elements] = obs[4:4+available_elements]
+            
+            global_features = F.relu(self.global_mlp(global_input))
+            
+            # Combine features
+            if graph_features.shape[0] != self.hidden_dim:
+                # Pad or truncate to match expected size
+                if graph_features.shape[0] < self.hidden_dim:
+                    padding = torch.zeros(self.hidden_dim - graph_features.shape[0], device=obs.device)
+                    graph_features = torch.cat([graph_features, padding])
+                else:
+                    graph_features = graph_features[:self.hidden_dim]
+            
+            combined_features = torch.cat([graph_features, global_features])
+            feature = self.final_mlp(combined_features)
+            features.append(feature)
+        
+        return torch.stack(features)
     
     def process_graph_data(self, graph_data: Data) -> torch.Tensor:
         """
@@ -257,7 +291,7 @@ class GNNFeatureExtractor(BaseFeaturesExtractor):
             x = F.relu(gnn_layer(x, graph_data.edge_index))
         
         # Global pooling to get graph-level representation
-        batch = torch.zeros(x.size(0), dtype=torch.long)  # Single graph
+        batch = torch.zeros(x.size(0), dtype=torch.long, device=x.device)  # Single graph
         graph_features = self.global_pool(x, batch)
         
         # Process global features
@@ -286,6 +320,7 @@ class GNNActorCriticPolicy(ActorCriticPolicy):
 class GraphPPOAgent:
     """
     PPO Agent with GNN-based policy for water distribution network optimization
+    
     """
     
     def __init__(self, env, pipes_config: Dict, **ppo_kwargs):
@@ -298,23 +333,21 @@ class GraphPPOAgent:
         self.env = env
         self.pipes_config = pipes_config
         self.graph_converter = WaterNetworkGraphConverter(pipes_config)
+
+        device = "cuda" if torch.cuda.is_available() else "cpu" # Use GPU to accelerate training if available
+        print(f"Using device: {device}")
         
         # Default PPO parameters
         default_ppo_kwargs = {
-            "learning_rate": 3e-4, # Controls policy update with each step
-            "n_steps": 2048, # Largest n_steps that is easily divisible into mini-batches
-            "batch_size": 64, # samples per training mini-batch - must be smaller than n_steps
-            "n_epochs": 10, # How many times each collected sample is used to update the policy
-            "gamma": 0.99, # Discount factor for future rewards (prioritise future WDN systems)
-            "gae_lambda": 0.95, # Reduced variance in rewards (in this context there is little variance)
-            "clip_range": 0.2, # Standard epsilon value controls deviation of policyt updates
-            "verbose": 2 # Set to 2 for training diagnostics
+            "learning_rate": 3e-4,
+            "n_steps": 2048,
+            "batch_size": 64,
+            "n_epochs": 10,
+            "gamma": 0.99,
+            "gae_lambda": 0.95,
+            "clip_range": 0.2,
+            "verbose": 2
         }
-
-        """
-        Generalised Advnatage Estimation (GAE) is used to reduce variance in the rewards. It is an additional term in the advnatge function that controls the bias-variance trade-off.
-        
-        """
 
         default_ppo_kwargs.update(ppo_kwargs)
         
@@ -323,6 +356,7 @@ class GraphPPOAgent:
             GNNActorCriticPolicy,
             env,
             policy_kwargs={"pipes_config": pipes_config},
+            device = device,
             **default_ppo_kwargs
         )
     
@@ -346,6 +380,9 @@ class GraphPPOAgent:
 class GraphAwareWNTREnv(gym.Wrapper):
     """
     Wrapper for WNTR environment that provides graph-aware functionality
+
+    THE FUNCTIONALISTY OF THIS CLASS IS NOW BUILT INTO THE WNTRGYMENV CLASS AND IS NO LONGER IN USE
+
     """
     
     def __init__(self, env, pipes_config):
@@ -353,69 +390,36 @@ class GraphAwareWNTREnv(gym.Wrapper):
         self.pipes_config = pipes_config
         self.graph_converter = WaterNetworkGraphConverter(pipes_config)
         self.current_graph_data = None
+        self.use_graph_obs = False  # Flag to control observation type
 
-        # Modified observation space to remove action mask
-        # Focus only on network properties: nodes, edges, and globals
-        self.observation_space = spaces.Dict({
-            'nodes': spaces.Box(low=-np.inf, high=np.inf, shape=(100, 4), dtype=np.float32),  # [demand, elevation, pressure, is_junction]
-            'edges': spaces.Box(low=-np.inf, high=np.inf, shape=(200, 4), dtype=np.float32),  # [diameter, length, roughness, is_current_pipe]
-            'globals': spaces.Box(low=-np.inf, high=np.inf, shape=(3,), dtype=np.float32),    # [num_nodes, num_pipes, current_pipe_index]
-        })
-
+        # Keep the original observation space for compatibility
+        self.observation_space = env.observation_space
+        
         print("GraphAwareWNTREnv initialized with observation space:", self.observation_space)
     
-    def reset(self):
-        obs = self.env.reset()
+    def reset(self, **kwargs):
+        obs = self.env.reset(**kwargs)
         self._update_graph_data()
-        return self._get_observation()  # Return modified observation
+        return obs  # Return original observation for now
     
     def step(self, action):
-        obs, reward, done, info = self.env.step(action)
+        obs, reward, terminated, done, info = self.env.step(action)
         self._update_graph_data()
-        return self._get_observation(), reward, done, info  # Return modified observation
+        return obs, reward, terminated, done, info  # Return original observation for now
     
     def _update_graph_data(self):
         # Convert current network to graph data
-        network = self.env.current_network
-        node_pressures = self.env.node_pressures
-        current_pipe_index = self.env.current_pipe_index
-        
-        self.current_graph_data = self.graph_converter.network_to_graph_data(
-            network, node_pressures, current_pipe_index
-        )
-    
-    def _get_observation(self):
-        """
-        Create observation dictionary from current graph data without action mask
-        """
-        if self.current_graph_data is None:
-            # Return empty observation if no graph data is available
-            return {
-                'nodes': np.zeros((1, 4), dtype=np.float32),
-                'edges': np.zeros((1, 4), dtype=np.float32),
-                'globals': np.zeros(3, dtype=np.float32)
-            }
-        
-        # Extract node data: [demand, elevation, pressure, is_junction]
-        nodes = self.current_graph_data.x.numpy()
-        # Pad or truncate to fixed size
-        padded_nodes = np.zeros((100, 4), dtype=np.float32)
-        padded_nodes[:min(nodes.shape[0], 100), :] = nodes[:min(nodes.shape[0], 100), :]
-        
-        # Extract edge data: [diameter, length, roughness, is_current_pipe]
-        edges = self.current_graph_data.edge_attr.numpy()
-        # Pad or truncate to fixed size
-        padded_edges = np.zeros((200, 4), dtype=np.float32)
-        padded_edges[:min(edges.shape[0], 200), :] = edges[:min(edges.shape[0], 200), :]
-        
-        # Global features: [num_nodes, num_pipes, current_pipe_index]
-        globals_data = self.current_graph_data.global_features.numpy()
-        
-        return {
-            'nodes': padded_nodes,
-            'edges': padded_edges,
-            'globals': globals_data
-        }
+        try:
+            network = self.env.current_network
+            node_pressures = getattr(self.env, 'node_pressures', {})
+            current_pipe_index = getattr(self.env, 'current_pipe_index', 0)
+            
+            self.current_graph_data = self.graph_converter.network_to_graph_data(
+                network, node_pressures, current_pipe_index
+            )
+        except Exception as e:
+            print(f"Warning: Could not update graph data: {e}")
+            self.current_graph_data = None
     
     def get_graph_data(self) -> Optional[Data]:
         """Get current graph data"""
@@ -424,42 +428,10 @@ class GraphAwareWNTREnv(gym.Wrapper):
     def get_action_mask(self) -> np.ndarray:
         """
         Get action mask for current pipe
-        Note: This is still useful for action selection, just not part of observation
         """
         if hasattr(self.env, 'get_action_mask'):
             return self.env.get_action_mask()
         
-        return np.ones(self.action_space.n, dtype=bool)
-    
-    def reset(self):
-        obs = self.env.reset()
-        self._update_graph_data()
-        return obs
-    
-    def step(self, action):
-        obs, reward, done, info = self.env.step(action)
-        self._update_graph_data()
-        return obs, reward, done, info
-    
-    def _update_graph_data(self):
-        # Convert current network to graph data
-        network = self.env.current_network
-        node_pressures = self.env.node_pressures
-        current_pipe_index = self.env.current_pipe_index
-        
-        # Fix: Use self.graph_converter instead of self.converter
-        self.current_graph_data = self.graph_converter.network_to_graph_data(
-            network, node_pressures, current_pipe_index
-        )
-    
-    def get_graph_data(self) -> Optional[Data]:
-        """Get current graph data"""
-        return self.current_graph_data
-    
-    def get_action_mask(self) -> np.ndarray:
-        """Get action mask for current pipe"""
-        if hasattr(self.env, 'get_action_mask'):
-            return self.env.get_action_mask()
         return np.ones(self.action_space.n, dtype=bool)
 
 # Example usage and training script
@@ -487,6 +459,10 @@ def create_and_train_gnn_agent():
     
     # Import your environment
     from PPO_Environment import WNTRGymEnv
+    import os
+
+    agents_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "agents")
+    os.makedirs(agents_dir, exist_ok=True)
     
     # Create environment
     base_env = WNTRGymEnv(pipes, scenarios)
@@ -497,17 +473,14 @@ def create_and_train_gnn_agent():
     print("Action space:", env.action_space)
     
     # Create and train agent
-    agent = GraphPPOAgent(env, pipes, verbose=2) # Set verbose to 1 for full length training
-    agent.train(total_timesteps=50000) # Adjust total_timesteps as needed
+    agent = GraphPPOAgent(env, pipes, verbose=2)
+    agent.train(total_timesteps=50000)
     
     # Save the trained agent
-    agent.save("gnn_ppo_water_network")
-    
+    model_path = os.path.join(agents_dir, "gnn_ppo_water_network")
+    agent.save(model_path)
+
     print("GNN-based PPO agent setup complete!")
-    print("To use this with your environment:")
-    print("1. Import your WNTRGymEnv")
-    print("2. Create the environment with GraphAwareWNTREnv wrapper")
-    print("3. Create and train the GraphPPOAgent")
 
 if __name__ == "__main__":
     create_and_train_gnn_agent()
