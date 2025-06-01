@@ -21,7 +21,7 @@ def run_training_experiment(
     use_vectorized: bool,
     num_envs: int,
     device: str,
-    total_timesteps: int = 20000 # Small timesteps for quick testing and comparison
+    total_timesteps: int = 10000 # Small timesteps for quick testing and comparison
     ):
     """
     Runs a single training experiment with a specific configuration.

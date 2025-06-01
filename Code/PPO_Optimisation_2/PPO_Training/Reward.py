@@ -26,7 +26,7 @@ random.seed(1)
 def calculate_reward(
         current_network, 
         original_pipe_diameters,  # Dictionary of original pipe diameters
-        actions,                  # List of pipe ID diameter pairs representing the actions taken 
+        actions,                  # List of pipe ID diameter pairs representing the actions
         pipes,                    # Dictionary of pipe types with unit costs
         performance_metrics,
         labour_cost,
@@ -51,10 +51,9 @@ def calculate_reward(
 
     print("Calculating cost given provided actions...")
 
-    reward_weights = [0.1, # Cost ratio
-                      0.3, # Pressure deficit ratio
+    reward_weights = [0.3, # Cost ratio
+                      0.4, # Pressure deficit ratio
                       0.2, # Demand satisfaction ratio
-                      0.4 # Disconnection multiplier
                       ]
 
     initial_pipes = list(current_network.pipes())
@@ -123,13 +122,14 @@ def calculate_reward(
     # ------------------------------------
     # Demand satisfaction ratio is already between 0 and 1, so we can use it directly
     # print(f"Demand Satisfaction Ratio: {demand_satisfaction}")
+
+    demand_satisfaction = max(demand_satisfaction, 0)  # Ensure it's non-negative
     
     # ------------------------------------
     # Calculate the final reward
     reward = max(reward_weights[0] * cost_ratio +
               reward_weights[1] * pd_ratio +
-              reward_weights[2] * demand_satisfaction +
-              reward_weights[3] * disconnection_multiplier,
+              reward_weights[2] * demand_satisfaction,
               0)  # Ensure reward is non-negative
     
     """Relaxing this because action mask should prevent any downgrades"""

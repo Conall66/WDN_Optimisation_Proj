@@ -14,7 +14,7 @@ from PPO_Environment import WNTRGymEnv
 from Actor_Critic_Nets2 import GraphPPOAgent
 from Plot_Agents import PlottingCallback, plot_training_and_performance, plot_action_analysis, plot_final_agent_rewards_by_scenario
 
-def train_agent_with_monitoring(time_steps = 50000):
+def train_agent_with_monitoring(net_type = 'both', time_steps = 50000):
     """
     Main training function for the GNN-based PPO agent with monitoring.
     """
@@ -27,13 +27,29 @@ def train_agent_with_monitoring(time_steps = 50000):
         'Pipe_5': {'diameter': 0.7620, 'unit_cost': 144.60},
         'Pipe_6': {'diameter': 1.0160, 'unit_cost': 222.62}
     }
+
+    if net_type == 'both':
     
-    scenarios = [
-        'anytown_densifying_1', 'anytown_densifying_2', 'anytown_densifying_3',
-        'anytown_sprawling_1', 'anytown_sprawling_2', 'anytown_sprawling_3',
-        'hanoi_densifying_1', 'hanoi_densifying_2', 'hanoi_densifying_3',
-        'hanoi_sprawling_1', 'hanoi_sprawling_2', 'hanoi_sprawling_3'
-    ]
+        scenarios = [
+            'anytown_densifying_1', 'anytown_densifying_2', 'anytown_densifying_3',
+            'anytown_sprawling_1', 'anytown_sprawling_2', 'anytown_sprawling_3',
+            'hanoi_densifying_1', 'hanoi_densifying_2', 'hanoi_densifying_3',
+            'hanoi_sprawling_1', 'hanoi_sprawling_2', 'hanoi_sprawling_3'
+        ]
+
+    elif net_type == 'hanoi':
+
+        scenarios = [
+            'hanoi_densifying_1', 'hanoi_densifying_2', 'hanoi_densifying_3',
+            'hanoi_sprawling_1', 'hanoi_sprawling_2', 'hanoi_sprawling_3'
+        ]
+
+    elif net_type == 'anytown':
+
+        scenarios = [
+            'anytown_densifying_1', 'anytown_densifying_2', 'anytown_densifying_3',
+            'anytown_sprawling_1', 'anytown_sprawling_2', 'anytown_sprawling_3'
+        ]
 
     # Helper function to create the environment
     def make_env():
@@ -41,8 +57,8 @@ def train_agent_with_monitoring(time_steps = 50000):
         return env
 
     num_cpu = mp.cpu_count()
-    vec_env = SubprocVecEnv([make_env for _ in range(num_cpu)]) # This line parallelises code
-    # vec_env = DummyVecEnv([make_env])
+    # vec_env = SubprocVecEnv([make_env for _ in range(num_cpu)]) # This line parallelises code
+    vec_env = DummyVecEnv([make_env])
     
     ppo_config = {
         "learning_rate": 3e-4, "n_steps": 2048, "batch_size": 64, "n_epochs": 10,
@@ -147,62 +163,67 @@ def evaluate_random_policy_by_scenario(pipes, scenarios, num_episodes_per_scenar
 if __name__ == "__main__":
 
     # 1. Train the agent and log data
-    model_path, pipes, scenarios = train_agent_with_monitoring(time_steps=50000)
-    
-    # --- MODIFICATION START: Capture returned figure objects ---
-    print("\nGenerating plot data...")
 
-    # Find log file path
-    script = os.path.dirname(__file__)
-    log_file = os.path.join(script, "Plots", "training_log.csv")
+    net_types = ['anytown', 'hanoi']
 
-     # Add existence check
-    if not os.path.exists(log_file):
-        print(f"Warning: Log file not found at {log_file}")
-        print("Check that PlottingCallback is correctly saving data during training")
-        # Continue with the evaluation even if plots can't be generated
-        figs_performance = None
-        fig_actions = None
-    else:
-        figs_performance = plot_training_and_performance(log_file)
-        fig_actions = plot_action_analysis(log_file)
+    for net in net_types:
 
-    # 3. Evaluate the final agent on each scenario
-    drl_scenario_results = evaluate_agent_by_scenario(model_path, pipes, scenarios)
-    random_scenario_results = evaluate_random_policy_by_scenario(pipes, scenarios)
+        model_path, pipes, scenarios = train_agent_with_monitoring(net_type = net, time_steps=500000)
+        
+        # --- MODIFICATION START: Capture returned figure objects ---
+        print("\nGenerating plot data...")
 
-    # 4. Plot the final scenario-based rewards
-    print("\nGenerating final agent performance plot data...")
-    fig_scenarios = plot_final_agent_rewards_by_scenario(drl_scenario_results, random_scenario_results)
+        # Find log file path
+        script = os.path.dirname(__file__)
+        log_file = os.path.join(script, "Plots", "training_log.csv")
 
-    plt.show()
-    
-    # --- MODIFICATION: Explicitly save all captured figures ---
-    print("\nSaving all generated plots...")
-    # Extract timestamp from the model path to name plots consistently
-    model_timestamp = os.path.basename(model_path).replace('trained_gnn_ppo_wn_', '')
+        # Add existence check
+        if not os.path.exists(log_file):
+            print(f"Warning: Log file not found at {log_file}")
+            print("Check that PlottingCallback is correctly saving data during training")
+            # Continue with the evaluation even if plots can't be generated
+            figs_performance = None
+            fig_actions = None
+        else:
+            figs_performance = plot_training_and_performance(log_file)
+            fig_actions = plot_action_analysis(log_file)
 
-    # Define save directories
-    perf_save_path = os.path.join("Plots", "Training and Performance")
-    action_save_path = os.path.join("Plots", "Action Analysis")
-    scenario_save_path = os.path.join("Plots", "Reward_by_Scenario")
-    
-    # Create directories if they don't exist
-    os.makedirs(perf_save_path, exist_ok=True)
-    os.makedirs(action_save_path, exist_ok=True)
-    os.makedirs(scenario_save_path, exist_ok=True)
-    
-    # Save the figures using the object-oriented method
-    if figs_performance:
-        figs_performance[0].savefig(os.path.join(perf_save_path, f"training_metrics_{model_timestamp}.png"))
-        figs_performance[1].savefig(os.path.join(perf_save_path, f"stepwise_performance_{model_timestamp}.png"))
-    if fig_actions:
-        fig_actions.savefig(os.path.join(action_save_path, f"action_analysis_{model_timestamp}.png"))
-    if fig_scenarios:
-        fig_scenarios.savefig(os.path.join(scenario_save_path, f"scenario_rewards_{model_timestamp}.png"))
-    
-    print("All plots saved.")
-    # --- MODIFICATION END ---
-    
-    print("\nAll tasks complete! Displaying plots...")
-    plt.show()  # This will now display all four figures at once
+        # 3. Evaluate the final agent on each scenario
+        drl_scenario_results = evaluate_agent_by_scenario(model_path, pipes, scenarios)
+        random_scenario_results = evaluate_random_policy_by_scenario(pipes, scenarios)
+
+        # 4. Plot the final scenario-based rewards
+        print("\nGenerating final agent performance plot data...")
+        fig_scenarios = plot_final_agent_rewards_by_scenario(drl_scenario_results, random_scenario_results)
+
+        # plt.show()
+        
+        # --- MODIFICATION: Explicitly save all captured figures ---
+        print("\nSaving all generated plots...")
+        # Extract timestamp from the model path to name plots consistently
+        model_timestamp = os.path.basename(model_path).replace('trained_gnn_ppo_wn_', '')
+
+        # Define save directories
+        perf_save_path = os.path.join("Plots", "Training and Performance")
+        action_save_path = os.path.join("Plots", "Action Analysis")
+        scenario_save_path = os.path.join("Plots", "Reward_by_Scenario")
+        
+        # Create directories if they don't exist
+        os.makedirs(perf_save_path, exist_ok=True)
+        os.makedirs(action_save_path, exist_ok=True)
+        os.makedirs(scenario_save_path, exist_ok=True)
+        
+        # Save the figures using the object-oriented method
+        if figs_performance:
+            figs_performance[0].savefig(os.path.join(perf_save_path, f"training_metrics_{model_timestamp}.png"))
+            figs_performance[1].savefig(os.path.join(perf_save_path, f"stepwise_performance_{model_timestamp}.png"))
+        if fig_actions:
+            fig_actions.savefig(os.path.join(action_save_path, f"action_analysis_{model_timestamp}.png"))
+        if fig_scenarios:
+            fig_scenarios.savefig(os.path.join(scenario_save_path, f"scenario_rewards_{model_timestamp}.png"))
+        
+        print("All plots saved.")
+        # --- MODIFICATION END ---
+        
+        print("\nAll tasks complete! Displaying plots...")
+        # plt.show()  # This will now display all four figures at once
