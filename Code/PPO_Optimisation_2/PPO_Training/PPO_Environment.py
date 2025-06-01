@@ -15,7 +15,7 @@ from typing import Dict, List, Tuple, Optional
 import networkx as nx
 
 from Hydraulic_Model import run_epanet_simulation, evaluate_network_performance
-from Reward import calculate_reward
+from Reward import calculate_reward, compute_total_cost
 
 class WNTRGymEnv(gym.Env):
     metadata = {'render_modes': ['human']}
@@ -27,7 +27,9 @@ class WNTRGymEnv(gym.Env):
             networks_folder: str = 'Modified_nets',
             # Define max network size for padding. Adjust if your networks can be larger.
             max_nodes: int = 150,
-            max_pipes: int = 200,
+            max_pipes: int = 200, # These parameters determine rollout buffer size
+            current_max_pd = 0.0,
+            current_max_cost = 0.0
             ):
         
         super(WNTRGymEnv, self).__init__()
@@ -38,9 +40,10 @@ class WNTRGymEnv(gym.Env):
         self.networks_folder = networks_folder
         self.labour_cost = 100
 
-        # --- New parameters for handling variable graph sizes ---
         self.max_nodes = max_nodes
         self.max_pipes = max_pipes
+        self.current_max_pd = current_max_pd
+        self.current_max_cost = current_max_cost
         
         self.current_scenario = None
         self.current_time_step = 0
@@ -62,6 +65,8 @@ class WNTRGymEnv(gym.Env):
             "nodes": spaces.Box(low=-np.inf, high=np.inf, shape=(self.max_nodes, 4), dtype=np.float32),
             # Edge features: [diameter, length, roughness, is_current_pipe]
             "edges": spaces.Box(low=-np.inf, high=np.inf, shape=(self.max_pipes, 4), dtype=np.float32),
+            # Edge connectivity: Shape is [2, num_edges]. We use max_pipes * 2 for bidirectional edges.
+            "edge_index": spaces.Box(low=0, high=max_nodes, shape=(2, max_pipes * 2), dtype=np.int32),
             # Global features: [num_nodes, num_pipes, current_pipe_index]
             "globals": spaces.Box(low=-np.inf, high=np.inf, shape=(3,), dtype=np.float32)
         })
@@ -73,15 +78,21 @@ class WNTRGymEnv(gym.Env):
 
     def get_network_features(self) -> Dict[str, np.ndarray]:
         """
-        Extracts features as a dictionary of padded numpy arrays, suitable for the GNN.
+        Extracts features, including edge_index, as a dictionary of padded numpy arrays.
         """
         # --- Padded arrays for features ---
         node_features = np.zeros((self.max_nodes, 4), dtype=np.float32)
         edge_features = np.zeros((self.max_pipes, 4), dtype=np.float32)
+        edge_index_array = np.zeros((2, self.max_pipes * 2), dtype=np.int32)
+
+        # --- Map node names to a consistent integer index ---
+        # This is crucial for building the edge_index tensor correctly
+        node_list = list(self.current_network.junctions())
+        node_name_to_idx = {name: i for i, (name, _) in enumerate(node_list)}
+        num_nodes = len(node_list)
 
         # --- Extract Node Features ---
-        num_nodes = len(list(self.current_network.junctions()))
-        for i, (node_name, node) in enumerate(self.current_network.junctions()):
+        for i, (node_name, node) in enumerate(node_list):
             if i < self.max_nodes:
                 node_features[i] = [
                     node.base_demand or 0.0,
@@ -90,30 +101,42 @@ class WNTRGymEnv(gym.Env):
                     1.0  # is_junction
                 ]
 
-        # --- Extract Edge (Pipe) Features ---
+        # --- Extract Edge Features and Edge Index ---
+        edge_idx_list = []
         num_pipes = len(self.pipe_names)
         for i, pipe_name in enumerate(self.pipe_names):
-             if i < self.max_pipes:
+            if i < self.max_pipes:
                 pipe = self.current_network.get_link(pipe_name)
-                is_current_pipe = 1.0 if i == self.current_pipe_index else 0.0
-                edge_features[i] = [
-                    pipe.diameter,
-                    pipe.length,
-                    pipe.roughness,
-                    is_current_pipe
-                ]
+                # Get start and end node indices from our map
+                start_node_idx = node_name_to_idx.get(pipe.start_node_name)
+                end_node_idx = node_name_to_idx.get(pipe.end_node_name)
+
+                # Only add edge if both nodes are in our junction list
+                if start_node_idx is not None and end_node_idx is not None:
+                    is_current_pipe = 1.0 if i == self.current_pipe_index else 0.0
+                    edge_features[i] = [pipe.diameter, pipe.length, pipe.roughness, is_current_pipe]
+                    
+                    # Add bidirectional edge to the index list
+                    edge_idx_list.append([start_node_idx, end_node_idx])
+                    edge_idx_list.append([end_node_idx, start_node_idx])
+
+        # Populate the padded edge_index array
+        if edge_idx_list:
+            edge_index_tensor = np.array(edge_idx_list, dtype=np.int32).T
+            edge_index_array[:, :edge_index_tensor.shape[1]] = edge_index_tensor
 
         # --- Extract Global Features ---
-        global_features = np.array([
-            num_nodes,
-            num_pipes,
-            self.current_pipe_index
-        ], dtype=np.float32)
+        global_features = np.array([num_nodes, num_pipes, self.current_pipe_index], dtype=np.float32)
 
-        return {"nodes": node_features, "edges": edge_features, "globals": global_features}
+        return {
+            "nodes": node_features, 
+            "edges": edge_features, 
+            "edge_index": edge_index_array, # Return the new array
+            "globals": global_features
+        }
 
     def reset(self, seed: Optional[int] = None, options: Optional[dict] = None, scenario_name: Optional[str] = None) -> Tuple[Dict, Dict]:
-        
+
         super().reset(seed=seed)
         
         # Add this logic to select the scenario
@@ -144,6 +167,31 @@ class WNTRGymEnv(gym.Env):
         self.node_names = self.current_network.junction_name_list
 
         self.original_diameters_this_timestep = {p: self.current_network.get_link(p).diameter for p in self.pipe_names}
+
+        try:
+            wn_copy_pd = wntr.network.WaterNetworkModel(network_path)
+            min_diameter = min(p['diameter'] for p in self.pipes.values())
+            for p_name in wn_copy_pd.pipe_name_list:
+                wn_copy_pd.get_link(p_name).diameter = min_diameter
+            max_pd_results, _ = self.simulate_network(wn_copy_pd)
+            if max_pd_results:
+                max_pd_metrics = evaluate_network_performance(wn_copy_pd, max_pd_results)
+                self.current_max_pd = max_pd_metrics.get('total_pressure_deficit', 0.0)
+        except Exception as e:
+            print(f"Warning: Failed to pre-calculate max_pd: {e}")
+            self.current_max_pd = 0.0
+
+        try:
+            max_diameter = max(p['diameter'] for p in self.pipes.values())
+            max_actions = [(pipe_id, max_diameter) for pipe_id in self.pipe_names]
+            # Note: The energy_cost component will be based on the initial state, which is acceptable for a static ceiling.
+            _, initial_metrics = self.simulate_network(self.current_network)
+            initial_energy_cost = initial_metrics.get('total_pump_cost', 0.0) if initial_metrics else 0.0
+            
+            self.current_max_cost = compute_total_cost(list(self.current_network.pipes()), max_actions, self.labour_cost, initial_energy_cost, self.pipes, self.original_diameters_this_timestep)
+        except Exception as e:
+            print(f"Warning: Failed to pre-calculate max_cost: {e}")
+            self.current_max_cost = 0.0
         
         self.node_pressures = {}
         results, _ = self.simulate_network(self.current_network)
@@ -176,14 +224,25 @@ class WNTRGymEnv(gym.Env):
         # --- Logic for taking an action on a single pipe ---
         pipe_name = self.pipe_names[self.current_pipe_index]
         old_diameter = self.current_network.get_link(pipe_name).diameter
+        action_is_valid_upgrade = False
 
         # Action 0 is "do nothing"
-        if action > 0:
+        if action == 0:
+            action_is_valid_upgrade = True
+        elif action > 0:
             new_diameter = self.pipe_diameter_options[action - 1]
-            # MODIFIED: Only allow upgrades
-            if new_diameter > old_diameter: 
+            if new_diameter > old_diameter:
                 self.current_network.get_link(pipe_name).diameter = new_diameter
                 self.actions_this_timestep.append((pipe_name, new_diameter))
+                action_is_valid_upgrade = True
+
+        # If the chosen action was not a valid upgrade, the episode should be penalized
+        if not action_is_valid_upgrade:
+            # Penalize and end the episode immediately for taking an invalid action
+            reward = -10.0 # A large penalty
+            terminated = True
+            obs = self.get_network_features()
+            return obs, reward, terminated, truncated, {} # Return immediately
 
         self.current_pipe_index += 1
 
@@ -193,39 +252,19 @@ class WNTRGymEnv(gym.Env):
             results, metrics = self.simulate_network(self.current_network)
             
             if results:
-                # --- MODIFICATION START: Calculate max_pd for reward normalization ---
-                max_pd = 0.0
-                try:
-                    # Create a temporary copy of the network to find the worst-case pressure deficit
-                    network_path = self.network_states[self.current_time_step]
-                    wn_copy = wntr.network.WaterNetworkModel(network_path)
-                    
-                    # Get the smallest available pipe diameter
-                    min_diameter = min(p['diameter'] for p in self.pipes.values())
 
-                    # Set all pipes in the temporary network to the smallest diameter
-                    for p_name in wn_copy.pipe_name_list:
-                        wn_copy.get_link(p_name).diameter = min_diameter
-                    
-                    # Simulate this "worst-case" network
-                    max_pd_results, _ = self.simulate_network(wn_copy)
-                    if max_pd_results:
-                        max_pd_metrics = evaluate_network_performance(wn_copy, max_pd_results)
-                        max_pd = max_pd_metrics.get('total_pressure_deficit', 0.0)
-
-                except Exception as e:
-                    print(f"Error calculating max_pd: {e}")
-                # --- MODIFICATION END ---
-
-                downgraded = False # Downgrades are prevented by the action mask
-                disconnected, bad_actions = (False, []) # Placeholder
-
-                # MODIFICATION: Pass the calculated max_pd to the reward function
                 reward_tuple = calculate_reward(
-                    self.current_network, self.original_diameters_this_timestep, 
-                    self.actions_this_timestep, self.pipes, metrics, 
-                    self.labour_cost, downgraded, disconnected, bad_actions,
-                    max_pd=max_pd
+                    self.current_network, 
+                    self.original_diameters_this_timestep, 
+                    self.actions_this_timestep, 
+                    self.pipes, 
+                    metrics, 
+                    self.labour_cost, 
+                    False, 
+                    False, 
+                    [],
+                    max_pd=self.current_max_pd,
+                    max_cost=self.current_max_cost # Pass max_cost
                 )
                 reward = reward_tuple[0]
                 
@@ -240,7 +279,7 @@ class WNTRGymEnv(gym.Env):
                 }
 
             else: # Main simulation failed
-                reward = -1000.0
+                reward = 0.0 # Keep reward in normal value range
                 info = {} # Return empty info on failure
             
             # --- Reset for the next major timestep in the scenario ---

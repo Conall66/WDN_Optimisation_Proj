@@ -200,34 +200,59 @@ class GNNFeatureExtractor(BaseFeaturesExtractor):
             return self._process_flattened_observations(observations)
     
     def _process_dict_observations(self, observations: Dict[str, torch.Tensor]) -> torch.Tensor:
-        """Process dictionary-based observations"""
-        batch_size = observations['nodes'].shape[0]
-        features = []
-        
-        for i in range(batch_size):
-            # Extract components from the dictionary
+        """
+        Process dictionary observations by building a PyTorch Geometric Batch object
+        and passing it through the GNN.
+        """
+        graph_data_list = []
+        # Iterate over each graph in the batch
+        for i in range(observations['nodes'].shape[0]):
+            # Extract data for the current graph
             nodes = observations['nodes'][i]
             edges = observations['edges'][i]
+            edge_index = observations['edge_index'][i]
             globals_data = observations['globals'][i]
             
-            # Process non-zero nodes
-            node_mask = (nodes.sum(dim=1) != 0)
-            if node_mask.sum() > 0:
-                valid_nodes = nodes[node_mask]
-                node_features = F.relu(self.node_embedding(valid_nodes))
-                graph_features = torch.mean(node_features, dim=0)
-            else:
-                graph_features = torch.zeros(self.hidden_dim, device=nodes.device)
-            
-            # Process global features
-            global_features = F.relu(self.global_mlp(globals_data))
-            
-            # Combine features
-            combined_features = torch.cat([graph_features, global_features])
-            feature = self.final_mlp(combined_features)
-            features.append(feature)
+            # Create a Data object for this graph
+            # IMPORTANT: Convert edge_index to torch.long (int64)
+            graph_data = Data(
+                x=nodes.clone().detach() if isinstance(nodes, torch.Tensor) else torch.tensor(nodes, dtype=torch.float32),
+                edge_index=edge_index.clone().detach().to(torch.long) if isinstance(edge_index, torch.Tensor) else torch.tensor(edge_index, dtype=torch.long),
+                edge_attr=edges.clone().detach() if isinstance(edges, torch.Tensor) else torch.tensor(edges, dtype=torch.float32),
+                global_features=globals_data.clone().detach() if isinstance(globals_data, torch.Tensor) else torch.tensor(globals_data, dtype=torch.float32)
+            )
+            graph_data_list.append(graph_data)
+
+        # Combine all single graphs into a single Batch object
+        # This handles varied sizes automatically.
+        batch = Batch.from_data_list(graph_data_list)
         
-        return torch.stack(features)
+        # --- Now, apply the GNN layers (logic moved from the unused process_graph_data) ---
+        
+        # 1. Get node and edge embeddings
+        x = F.relu(self.node_embedding(batch.x))
+        # Edge embeddings can be added to the GNN layers if using a more advanced model
+        # like GATConv, but for GCNConv, we proceed with node features.
+
+        # 2. Pass through GCN layers for message passing
+        for gnn_layer in self.gnn_layers:
+            x = F.relu(gnn_layer(x, batch.edge_index))
+
+        # 3. Global pooling to get a feature vector for each graph in the batch
+        # `batch.batch` is the crucial tensor that tells the pooling layer which nodes
+        # belong to which graph.
+        graph_features = self.global_pool(x, batch.batch)
+
+        # 4. Process the global features from the original observation
+        # We need to extract the global features for each graph from the original dict
+        global_features_batch = observations['globals']
+        global_features_processed = F.relu(self.global_mlp(global_features_batch))
+        
+        # 5. Combine pooled graph features and global features
+        combined_features = torch.cat([graph_features, global_features_processed], dim=1)
+        final_features = self.final_mlp(combined_features)
+        
+        return final_features
     
     def _process_flattened_observations(self, observations: torch.Tensor) -> torch.Tensor:
         """
@@ -334,8 +359,8 @@ class GraphPPOAgent:
         self.pipes_config = pipes_config
         self.graph_converter = WaterNetworkGraphConverter(pipes_config)
 
-        # device = "cuda" if torch.cuda.is_available() else "cpu" # Use GPU to accelerate training if available
-        device = "cpu" # Force CPU for my training - normally this would be deactivated as the GPU would be much faster
+        device = "cuda" if torch.cuda.is_available() else "cpu" # Use GPU to accelerate training if available
+        # device = "cpu" # Force CPU for my training - normally this would be deactivated as the GPU would be much faster
         print(f"Using device: {device}")
         
         # Default PPO parameters

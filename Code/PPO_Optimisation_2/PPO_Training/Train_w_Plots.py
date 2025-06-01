@@ -95,13 +95,9 @@ def evaluate_agent_by_scenario(model_path, pipes, scenarios, num_episodes_per_sc
     """
     print(f"\nEvaluating DRL agent from {os.path.basename(model_path)}...")
     
-    # Create a single environment for evaluation
-    # Use DummyVecEnv to wrap it, which is standard practice for SB3 evaluation
     eval_env = DummyVecEnv([lambda: WNTRGymEnv(pipes, scenarios)])
     
-    # The agent needs to be created with the evaluation environment
     agent = GraphPPOAgent(eval_env, pipes)
-    # agent.load(model_path, env=eval_env)
     agent.load(model_path)
 
     scenario_rewards = {}
@@ -110,16 +106,27 @@ def evaluate_agent_by_scenario(model_path, pipes, scenarios, num_episodes_per_sc
         print(f"  - Evaluating scenario: {scenario}")
         episode_rewards = []
         for episode in range(num_episodes_per_scenario):
-            # The environment automatically cycles through scenarios, but this structure ensures we capture results for each
-            # For more targeted scenario evaluation, the WNTRGymEnv reset method would need modification
-            # to deterministically select a scenario. For now, we rely on broad evaluation.
-            obs = eval_env.reset()
+
+            # Get the initial, un-batched observation from the underlying environment
+            reset_output = eval_env.env_method("reset", scenario_name=scenario)
+            obs = reset_output[0][0]
+            
+            # --- START OF CORRECTION ---
+            # Manually add the batch dimension to the *initial* observation ONLY.
+            # The 'obs' variable will now consistently hold the batched observation.
+            obs = {key: np.expand_dims(value, axis=0) for key, value in obs.items()}
+            # --- END OF CORRECTION ---
+
             total_reward = 0
             done = False
             while not done:
+                # Predict using the correctly batched observation
                 action, _ = agent.predict(obs, deterministic=True)
+                
+                # The 'obs' variable is overwritten with the next batched observation from the step method
                 obs, reward, done, info = eval_env.step(action)
-                total_reward += reward[0] # Reward from vectorized env is a list
+                
+                total_reward += reward[0]
             episode_rewards.append(total_reward)
         
         avg_reward = np.mean(episode_rewards)
@@ -140,7 +147,12 @@ def evaluate_random_policy_by_scenario(pipes, scenarios, num_episodes_per_scenar
         print(f"  - Evaluating scenario: {scenario}")
         episode_rewards = []
         for _ in range(num_episodes_per_scenario):
-            obs, _ = eval_env.reset()
+
+            # reset_output = eval_env.env_method("reset", scenario_name=scenario)
+            # # Extract the observation 'obs' from the output of the first (and only) environment.
+            # obs = reset_output[0][0]
+            obs, _ = eval_env.reset(scenario_name=scenario)
+
             total_reward = 0
             done = False
             while not done:
@@ -213,8 +225,8 @@ def generate_and_save_plots(model_path, log_path, drl_results, random_results, p
         plt.close(fig_actions)
         print("  - Saved upgrade frequency plot.")
 
-if __name__ == "__main__":
-    # --- Overall Configuration ---
+def train_multiple():
+
     pipes = {
         'Pipe_1': {'diameter': 0.3048, 'unit_cost': 36.58},
         'Pipe_2': {'diameter': 0.4064, 'unit_cost': 56.32},
@@ -247,8 +259,8 @@ if __name__ == "__main__":
     print("### AGENT 1: TRAINING ON ANYTOWN ONLY ###")
     print("="*60)
 
-    # vec_env_anytown = SubprocVecEnv([lambda: WNTRGymEnv(pipes, anytown_scenarios) for _ in range(num_cpu)])
-    vec_env_anytown = DummyVecEnv([lambda: WNTRGymEnv(pipes, anytown_scenarios)])
+    vec_env_anytown = SubprocVecEnv([lambda: WNTRGymEnv(pipes, anytown_scenarios) for _ in range(num_cpu)])
+    # vec_env_anytown = DummyVecEnv([lambda: WNTRGymEnv(pipes, anytown_scenarios)])
     agent1 = GraphPPOAgent(vec_env_anytown, pipes, **ppo_config)
     
     cb1 = PlottingCallback()
@@ -273,8 +285,8 @@ if __name__ == "__main__":
     print("### AGENT 2: TRAINING ON HANOI ONLY ###")
     print("="*60)
 
-    # vec_env_hanoi = SubprocVecEnv([lambda: WNTRGymEnv(pipes, hanoi_scenarios) for _ in range(num_cpu)])
-    vec_env_hanoi = DummyVecEnv([lambda: WNTRGymEnv(pipes, hanoi_scenarios)])
+    vec_env_hanoi = SubprocVecEnv([lambda: WNTRGymEnv(pipes, hanoi_scenarios) for _ in range(num_cpu)])
+    # vec_env_hanoi = DummyVecEnv([lambda: WNTRGymEnv(pipes, hanoi_scenarios)])
     agent2 = GraphPPOAgent(vec_env_hanoi, pipes, **ppo_config)
     
     cb2 = PlottingCallback()
@@ -301,8 +313,8 @@ if __name__ == "__main__":
     
     # --- Stage 3a: Train on Anytown ---
     print("\n--- Stage 3a: Training on Anytown ---")
-    # vec_env_seq_anytown = SubprocVecEnv([lambda: WNTRGymEnv(pipes, anytown_scenarios) for _ in range(num_cpu)])
-    vec_env_seq_anytown = DummyVecEnv([lambda: WNTRGymEnv(pipes, anytown_scenarios)])
+    vec_env_seq_anytown = SubprocVecEnv([lambda: WNTRGymEnv(pipes, anytown_scenarios) for _ in range(num_cpu)])
+    # vec_env_seq_anytown = DummyVecEnv([lambda: WNTRGymEnv(pipes, anytown_scenarios)])
     agent3_pre = GraphPPOAgent(vec_env_seq_anytown, pipes, **ppo_config)
     
     cb3a = PlottingCallback()
@@ -323,8 +335,8 @@ if __name__ == "__main__":
 
     # --- Stage 3b: Fine-tune on Hanoi ---
     print("\n--- Stage 3b: Fine-tuning on Hanoi ---")
-    # vec_env_seq_hanoi = SubprocVecEnv([lambda: WNTRGymEnv(pipes, hanoi_scenarios) for _ in range(num_cpu)])
-    vec_env_seq_hanoi = DummyVecEnv([lambda: WNTRGymEnv(pipes, hanoi_scenarios)])
+    vec_env_seq_hanoi = SubprocVecEnv([lambda: WNTRGymEnv(pipes, hanoi_scenarios) for _ in range(num_cpu)])
+    # vec_env_seq_hanoi = DummyVecEnv([lambda: WNTRGymEnv(pipes, hanoi_scenarios)])
     agent3_final = GraphPPOAgent(vec_env_seq_hanoi, pipes, **ppo_config)
     
     print(f"Loading pre-trained model from {model_path3a}...")
@@ -349,3 +361,75 @@ if __name__ == "__main__":
     print("\n" + "="*60)
     print("### ALL TRAINING RUNS COMPLETE ###")
     print("="*60)
+
+def train_just_anytown():
+    pipes = {
+        'Pipe_1': {'diameter': 0.3048, 'unit_cost': 36.58},
+        'Pipe_2': {'diameter': 0.4064, 'unit_cost': 56.32},
+        'Pipe_3': {'diameter': 0.5080, 'unit_cost': 78.71},
+        'Pipe_4': {'diameter': 0.6096, 'unit_cost': 103.47},
+        'Pipe_5': {'diameter': 0.7620, 'unit_cost': 144.60},
+        'Pipe_6': {'diameter': 1.0160, 'unit_cost': 222.62}
+    }
+    ppo_config = {
+        "learning_rate": 3e-4, "n_steps": 2048, "batch_size": 64, "n_epochs": 10,
+        "gamma": 0.5, "gae_lambda": 0.95, "clip_range": 0.2, "ent_coef": 0.01,
+        "vf_coef": 0.5, "max_grad_norm": 0.5, "verbose": 2
+    }
+
+    # Applying a low discount factor so the agent starts to prioritise short term rewwards more greatly
+
+    num_cpu = mp.cpu_count()
+    total_timesteps = 2048 # Short run through to chekc functionality
+    all_scenarios = [
+        'anytown_densifying_1', 'anytown_densifying_2', 'anytown_densifying_3', 'anytown_sprawling_1', 'anytown_sprawling_2', 'anytown_sprawling_3',
+        'hanoi_densifying_1', 'hanoi_densifying_2', 'hanoi_densifying_3', 'hanoi_sprawling_1', 'hanoi_sprawling_2', 'hanoi_sprawling_3'
+    ]
+    anytown_scenarios = [s for s in all_scenarios if 'anytown' in s]
+    hanoi_scenarios = [s for s in all_scenarios if 'hanoi' in s]
+
+    # ===================================================================
+    # --- AGENT 1: Anytown Only ---
+    # ===================================================================
+    print("\n" + "="*60)
+    print("### AGENT 1: TRAINING ON ANYTOWN ONLY ###")
+    print("="*60)
+
+    # vec_env_anytown = SubprocVecEnv([lambda: WNTRGymEnv(pipes, anytown_scenarios) for _ in range(num_cpu)])
+    vec_env_anytown = DummyVecEnv([lambda: WNTRGymEnv(pipes, anytown_scenarios)])
+    agent1 = GraphPPOAgent(vec_env_anytown, pipes, **ppo_config)
+    
+    cb1 = PlottingCallback()
+    agent1.train(total_timesteps=total_timesteps, callback=cb1)
+    
+    ts1 = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    model_path1 = os.path.join("agents", f"agent1_anytown_only_{ts1}")
+    log_path1 = os.path.join("Plots", f"training_log_agent1_anytown_only_{ts1}.csv")
+    agent1.save(model_path1)
+
+    os.makedirs("Plots", exist_ok=True)
+
+    # Check if file exists before renaming
+    if os.path.exists(os.path.join("Plots", "training_log.csv")):
+        os.rename(os.path.join("Plots", "training_log.csv"), log_path1)
+    else:
+        print(f"Warning: Could not find training log file to rename. Will continue without renaming.")
+
+    # os.rename(os.path.join("Plots", "training_log.csv"), log_path1)
+    # vec_env_anytown.close()
+
+    print(f"Agent 1 training complete. Model: {model_path1}, Log: {log_path1}")
+    drl1_results = evaluate_agent_by_scenario(model_path1, pipes, anytown_scenarios)
+    rand1_results = evaluate_random_policy_by_scenario(pipes, anytown_scenarios)
+    generate_and_save_plots(model_path1, log_path1, drl1_results, rand1_results, pipes, anytown_scenarios)
+
+    plt.show()  # Show plots if running interactively
+    print("\n" + "="*60)
+    print("### TRAINING COMPLETE ###")
+    print("="*60)
+    
+if __name__ == "__main__":
+    # --- Overall Configuration ---
+    
+    train_just_anytown()
+    # train_multiple()

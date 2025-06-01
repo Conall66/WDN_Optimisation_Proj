@@ -19,7 +19,7 @@ import time
 
 from Hydraulic_Model import run_epanet_simulation, evaluate_network_performance
 from wntr.graphics import plot_network
-from Visualise_network import visualise_network, visualise_demands
+# from Visualise_network import visualise_network, visualise_demands
 
 random.seed(1)
 
@@ -33,7 +33,8 @@ def calculate_reward(
         downgraded_pipes,
         disconnections=False,
         actions_causing_disconnections=None,
-        max_pd = None):
+        max_pd = None,
+        max_cost = None):
 
     """
     Calculate the reward based on the performance metrics and actions taken
@@ -75,40 +76,39 @@ def calculate_reward(
     # print(f"Max diameter: {max_diameter}, Next largest diameter: {next_largest}")
 
     # Extract pipe IDs from initial_pipes
-    initial_pipe_ids = [pipe_data.name for pipe, pipe_data in initial_pipes]
-    max_actions = [(pipe_id, max_diameter) for pipe_id in initial_pipe_ids]
+    # initial_pipe_ids = [pipe_data.name for pipe, pipe_data in initial_pipes]
+    # max_actions = [(pipe_id, max_diameter) for pipe_id in initial_pipe_ids]
 
     # Create a new list for corrected max actions
-    corrected_max_actions = []
+    # corrected_max_actions = []
     
-    # Check if pipes already have the maximum diameter and adjust accordingly
-    for i, (pipe_id, new_diameter) in enumerate(max_actions):
-        # Get the current diameter from original_pipe_diameters if available
-        if pipe_id in original_pipe_diameters:
-            current_diameter = original_pipe_diameters[pipe_id]
-        else:
-            # Otherwise get it from the current network
-            for pipe, pipe_data in initial_pipes:
-                if pipe_data.name == pipe_id:
-                    current_diameter = pipe_data.diameter
-                    break
+    # # Check if pipes already have the maximum diameter and adjust accordingly
+    # for i, (pipe_id, new_diameter) in enumerate(max_actions):
+    #     # Get the current diameter from original_pipe_diameters if available
+    #     if pipe_id in original_pipe_diameters:
+    #         current_diameter = original_pipe_diameters[pipe_id]
+    #     else:
+    #         # Otherwise get it from the current network
+    #         for pipe, pipe_data in initial_pipes:
+    #             if pipe_data.name == pipe_id:
+    #                 current_diameter = pipe_data.diameter
+    #                 break
         
-        # If the pipe already has the maximum diameter, use next largest instead
-        if current_diameter == max_diameter:
-            corrected_max_actions.append((pipe_id, next_largest))
-        else:
-            corrected_max_actions.append((pipe_id, max_diameter))
+    #     # If the pipe already has the maximum diameter, use next largest instead
+    #     if current_diameter == max_diameter:
+    #         corrected_max_actions.append((pipe_id, next_largest))
+    #     else:
+    #         corrected_max_actions.append((pipe_id, max_diameter))
     
-    max_actions = corrected_max_actions
+    # max_actions = corrected_max_actions
 
-    print("-------------------------------------")
-    print("Calculating cost given maximum actions...")
+    # print("-------------------------------------")
+    # print("Calculating cost given maximum actions...")
 
-    max_cost = compute_total_cost(initial_pipes, max_actions, labour_cost, energy_cost, pipes, original_pipe_diameters)
+    # max_cost = compute_total_cost(initial_pipes, max_actions, labour_cost, energy_cost, pipes, original_pipe_diameters)
 
     print("-------------------------------------")
     cost_ratio = max(1 - (cost / max_cost), 0) if max_cost > 0 else 0 # Where a cost of 1 is the best possible outcome
-
     # ------------------------------------
     
     # Normalise the pressure deficit ratio between 0 and the maximum pressure deficit (taken when all the pipes have the smallest possible diameter from selection)
@@ -290,6 +290,7 @@ def test_reward_random_net():
     # Initiali visulaisation
     # plot_network(wn, title="Initial Network", node_size=100)
     # plt.show()
+    from Visualise_network import visualise_demands 
     visualise_demands(wn, title="Initial Network Demands", show = True)
 
     # define actions as a list of tuples (pipe_id, new_diameter)
@@ -338,6 +339,7 @@ def test_reward_anytown():
     inp_file = os.path.join(os.path.dirname(__file__), 'Modified_nets', 'anytown-3.inp')
     wn = wntr.network.WaterNetworkModel(inp_file)
 
+    from Visualise_network import visualise_demands 
     visualise_demands(wn, title="Anytown Network Demands", show = True)
 
     pipes = {
