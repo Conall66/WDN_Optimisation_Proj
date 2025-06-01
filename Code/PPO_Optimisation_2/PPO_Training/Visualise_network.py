@@ -12,6 +12,11 @@ from matplotlib.colors import Normalize
 from matplotlib.cm import ScalarMappable
 import wntr
 from mpl_toolkits.mplot3d import Axes3D
+from matplotlib.lines import Line2D
+
+from PPO_Environment import WNTRGymEnv
+from Actor_Critic_Nets2 import GraphPPOAgent
+from stable_baselines3.common.vec_env import DummyVecEnv
 
 def visualise_demands(wn, title, save_path = None, show = False):
     
@@ -480,6 +485,111 @@ def get_node_elevation(wn, node_name):
 # 
 # # For 2D visualization
 # visualise_network(wn, results, "Network in 2D", "network_2d.png", mode='2d')
+
+def visualise_scenario(model_path: str, scenario_name: str, time_step_to_visualise: int):
+    """
+    Runs a trained agent on a specific scenario and visualises its upgrade decisions.
+
+    Args:
+        model_path (str): Path to the trained agent model file.
+        scenario_name (str): The name of the scenario to run (e.g., 'anytown_sprawling_3').
+        time_step_to_visualise (int): The specific time step within the scenario to visualise (e.g., 5).
+    """
+    print(f"\n--- Visualizing Agent Decisions ---")
+    print(f"Model: {model_path}")
+    print(f"Scenario: {scenario_name}, Time Step: {time_step_to_visualise}")
+
+    # --- 1. Load Configurations and Agent ---
+    pipes_config = {
+        'Pipe_1': {'diameter': 0.3048, 'unit_cost': 36.58}, 'Pipe_2': {'diameter': 0.4064, 'unit_cost': 56.32},
+        'Pipe_3': {'diameter': 0.5080, 'unit_cost': 78.71}, 'Pipe_4': {'diameter': 0.6096, 'unit_cost': 103.47},
+        'Pipe_5': {'diameter': 0.7620, 'unit_cost': 144.60}, 'Pipe_6': {'diameter': 1.0160, 'unit_cost': 222.62}
+    }
+    scenarios = [
+        'anytown_densifying_1', 'anytown_densifying_2', 'anytown_densifying_3', 'anytown_sprawling_1', 'anytown_sprawling_2', 'anytown_sprawling_3',
+        'hanoi_densifying_1', 'hanoi_densifying_2', 'hanoi_densifying_3', 'hanoi_sprawling_1', 'hanoi_sprawling_2', 'hanoi_sprawling_3'
+    ]
+
+    env = WNTRGymEnv(pipes_config, scenarios)
+    vec_env = DummyVecEnv([lambda: env])
+    agent = GraphPPOAgent(vec_env, pipes_config)
+    agent.load(model_path)
+
+    # --- 2. Run the Scenario to the Desired Time Step ---
+    obs, info = env.reset(scenario_name=scenario_name)
+
+    # Fast-forward to the target time step
+    while env.current_time_step < time_step_to_visualise:
+        action, _ = agent.predict(obs, deterministic=True)
+        obs, _, _, _, info = env.step(action)
+        if info.get('pipe_changes') is not None:
+             print(f"  > Completed time step {env.current_time_step - 1}...")
+
+    if env.current_time_step != time_step_to_visualise:
+        print(f"Error: Could not reach time step {time_step_to_visualise}. The scenario may be shorter.")
+        return
+
+    print(f"\nAt Time Step {time_step_to_visualise}. Running agent to record decisions...")
+
+    # --- 3. Record Agent's Decisions for the Current Time Step ---
+    upgraded_pipe_details = {}
+    network_before_changes = env.current_network.copy()
+    
+    # Loop until the agent has made a decision for every pipe in this time step
+    done = False
+    while not done and info.get('pipe_changes') is None:
+        pipe_name = env.pipe_names[env.current_pipe_index]
+        action, _ = agent.predict(obs, deterministic=True)
+
+        if action > 0: # Action > 0 is an upgrade
+            new_diameter = env.pipe_diameter_options[action - 1]
+            upgraded_pipe_details[pipe_name] = new_diameter
+            print(f"  - Agent chose to UPGRADE pipe '{pipe_name}' to {new_diameter:.4f} m")
+
+        obs, _, terminated, truncated, info = env.step(action)
+        done = terminated or truncated
+
+    # --- 4. Prepare for Plotting ---
+    # Use the network state *before* the agent's changes for the visualization base
+    wn = network_before_changes
+    link_colors = {}
+    link_widths = {}
+    
+    # Set default colors and widths
+    for pipe_name in wn.pipe_name_list:
+        link_colors[pipe_name] = 'lightgray'
+        link_widths[pipe_name] = 1.5
+
+    # Highlight upgraded pipes
+    for pipe_name in upgraded_pipe_details:
+        link_colors[pipe_name] = 'crimson' # Color for upgraded pipes
+        link_widths[pipe_name] = 4.0      # Thicker line for upgraded pipes
+
+    # --- 5. Generate and Save the Visualization ---
+    fig, ax = plt.subplots(figsize=(15, 12))
+    wntr.graphics.plot_network(
+        wn,
+        ax=ax,
+        node_size=40,
+        link_color=link_colors,
+        link_width=link_widths,
+        title=f"Agent Decisions for {scenario_name} | Time Step {time_step_to_visualise}"
+    )
+
+    # Create a custom legend
+    legend_elements = [
+        Line2D([0], [0], color='lightgray', lw=2, label='Unchanged Pipe'),
+        Line2D([0], [0], color='crimson', lw=4, label='Upgraded Pipe')
+    ]
+    ax.legend(handles=legend_elements, loc='upper right', fontsize='large')
+
+    # Save the plot
+    plots_dir = "Plots/Agent_Decisions"
+    os.makedirs(plots_dir, exist_ok=True)
+    save_path = os.path.join(plots_dir, f"{scenario_name}_T{time_step_to_visualise}_Decisions.png")
+    plt.savefig(save_path)
+    print(f"\nVisualization saved to: {save_path}")
+    plt.show()
 
 if __name__ == "__main__":
     # Test the visualistion function without results

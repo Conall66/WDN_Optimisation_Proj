@@ -5,6 +5,11 @@ import numpy as np
 from stable_baselines3.common.callbacks import BaseCallback
 import os
 import datetime
+from stable_baselines3.common.vec_env import DummyVecEnv
+
+# Make sure these modules can be imported from the context of this script
+from PPO_Environment import WNTRGymEnv
+from Actor_Critic_Nets2 import GraphPPOAgent
 
 class PlottingCallback(BaseCallback):
     """
@@ -66,8 +71,9 @@ class PlottingCallback(BaseCallback):
         print(f"Training log saved to {log_path}")
 
 def plot_training_and_performance(log_file="training_log.csv"): #
-    # ... (script and save_path setup remains the same) ...
-    log_file_path = os.path.join(os.path.dirname(__file__), "Plots", "training_log.csv")
+
+    # log_file_path = os.path.join(os.path.dirname(__file__), "Plots", "training_log.csv")
+    log_file_path = log_file
     if not os.path.exists(log_file_path): # Use log_file_path
         print(f"Log file not found: {log_file_path}")
         return [None, None] # Return list of Nones
@@ -135,7 +141,8 @@ def plot_training_and_performance(log_file="training_log.csv"): #
 
 def plot_action_analysis(log_file="training_log.csv"): #
     # ... (script and save_path setup, log_file existence check remains similar) ...
-    log_file_path = os.path.join(os.path.dirname(__file__), "Plots", "training_log.csv") # More robust path
+    # log_file_path = os.path.join(os.path.dirname(__file__), "Plots", "training_log.csv") # More robust path
+    log_file_path = log_file
     if not os.path.exists(log_file_path):
         print(f"Log file not found: {log_file_path}")
         return None # Return None
@@ -189,6 +196,97 @@ def plot_action_analysis(log_file="training_log.csv"): #
     fig.tight_layout() #
     # Saving is now handled in Train_w_Plots.py
     return fig
+
+def plot_upgrades_per_timestep(model_path: str, pipes: dict, scenarios: list, num_episodes: int = 10):
+    """
+    Evaluates a trained agent to plot the frequency of pipe upgrades
+    at each environment time step.
+
+    This function runs a specified number of episodes and tracks how many
+    upgrades the agent performs at each time step within the episodes.
+    It then plots the average and standard deviation of these upgrades.
+
+    Args:
+        model_path (str): Path to the trained agent model file (without the .zip extension).
+        pipes (dict): The pipes configuration dictionary.
+        scenarios (list): The list of scenarios for the environment.
+        num_episodes (int): The number of episodes to run for the evaluation.
+    """
+    print(f"\n--- Analyzing agent upgrade frequency per time step ---")
+    print(f"Model: {model_path}.zip")
+    print(f"Running for {num_episodes} episodes...")
+
+    # 1. Setup Environment and Agent
+    # Use a single, non-vectorized environment for this detailed step-by-step analysis.
+    eval_env = WNTRGymEnv(pipes, scenarios)
+    
+    # The agent must be initialized with a vectorized environment, even if temporary.
+    temp_env = DummyVecEnv([lambda: WNTRGymEnv(pipes, scenarios)])
+    agent = GraphPPOAgent(temp_env, pipes)
+    agent.load(model_path)
+
+    max_timesteps = 50 
+    upgrades_data = [[] for _ in range(max_timesteps)]
+
+    for episode in range(num_episodes):
+        obs, info = eval_env.reset()
+        done = False
+        print(f"  > Episode {episode + 1}/{num_episodes} | Scenario: {eval_env.current_scenario}")
+        
+        while not done:
+            action, _ = agent.predict(obs, deterministic=True)
+            obs, reward, terminated, truncated, info = eval_env.step(action)
+            done = terminated or truncated
+
+            # The `info` dictionary contains the 'pipe_changes' key only when a full
+            # environment time step (one full pass over the network's pipes) is complete.
+            if info.get('pipe_changes') is not None:
+                # The time step that just finished is `current_time_step - 1`, as the
+                # counter is incremented after the info dictionary is created.
+                time_step_index = eval_env.current_time_step - 1
+                num_upgrades = info['pipe_changes']
+                
+                if time_step_index < max_timesteps:
+                    upgrades_data[time_step_index].append(num_upgrades)
+    
+    eval_env.close()
+
+    # 3. Process and Plot the Collected Data
+    avg_upgrades = []
+    std_upgrades = []
+    valid_timesteps = []
+
+    for i in range(max_timesteps):
+        if upgrades_data[i]:  # Only process timesteps that were actually reached.
+            avg_upgrades.append(np.mean(upgrades_data[i]))
+            std_upgrades.append(np.std(upgrades_data[i]))
+            valid_timesteps.append(i)
+
+    if not valid_timesteps:
+        print("Warning: No pipe upgrade data was collected.")
+        return
+
+    fig, ax = plt.subplots(figsize=(15, 8))
+    ax.errorbar(valid_timesteps, avg_upgrades, yerr=std_upgrades, fmt='-o', color='dodgerblue', capsize=5, label='Avg. Upgrades')
+    ax.set_title(f'Agent Upgrade Frequency per Environment Time Step\n(Averaged over {num_episodes} episodes)', fontsize=16)
+    ax.set_xlabel('Environment Time Step', fontsize=12)
+    ax.set_ylabel('Average Number of Pipe Upgrades', fontsize=12)
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5)
+    ax.legend()
+    plt.tight_layout()
+
+    # 4. Save the Plot
+    plots_dir = os.path.join(os.path.dirname(__file__), "Plots", "Action Analysis")
+    os.makedirs(plots_dir, exist_ok=True)
+    
+    model_name = os.path.basename(model_path)
+    save_path = os.path.join(plots_dir, f'upgrades_per_timestep_{model_name}.png')
+    # plt.savefig(save_path)
+    print(f"\nPlot saved to {save_path}")
+    # plt.show()
+
+    return fig  # Return the figure object for further use if needed
+
 
 # Modify signature and plotting logic
 def plot_final_agent_rewards_by_scenario(drl_scenario_rewards: dict, random_scenario_rewards: dict): #

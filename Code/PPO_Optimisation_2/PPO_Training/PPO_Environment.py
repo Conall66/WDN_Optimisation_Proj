@@ -112,10 +112,17 @@ class WNTRGymEnv(gym.Env):
 
         return {"nodes": node_features, "edges": edge_features, "globals": global_features}
 
-    def reset(self, seed: Optional[int] = None, options: Optional[dict] = None) -> Tuple[Dict, Dict]:
+    def reset(self, seed: Optional[int] = None, options: Optional[dict] = None, scenario_name: Optional[str] = None) -> Tuple[Dict, Dict]:
+        
         super().reset(seed=seed)
         
-        self.current_scenario = self.np_random.choice(self.scenarios)
+        # Add this logic to select the scenario
+        if scenario_name and scenario_name in self.scenarios:
+            self.current_scenario = scenario_name
+            print(f"INFO: Running specified scenario: {self.current_scenario}")
+        else:
+            self.current_scenario = self.np_random.choice(self.scenarios)
+        
         self.network_states = self.load_network_states(self.current_scenario)
         
         self.current_time_step = 0

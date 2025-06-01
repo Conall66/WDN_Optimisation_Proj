@@ -334,7 +334,8 @@ class GraphPPOAgent:
         self.pipes_config = pipes_config
         self.graph_converter = WaterNetworkGraphConverter(pipes_config)
 
-        device = "cuda" if torch.cuda.is_available() else "cpu" # Use GPU to accelerate training if available
+        # device = "cuda" if torch.cuda.is_available() else "cpu" # Use GPU to accelerate training if available
+        device = "cpu" # Force CPU for my training - normally this would be deactivated as the GPU would be much faster
         print(f"Using device: {device}")
         
         # Default PPO parameters

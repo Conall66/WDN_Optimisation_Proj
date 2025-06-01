@@ -12,7 +12,7 @@ from stable_baselines3.common.vec_env import DummyVecEnv
 # Import your existing modules
 from PPO_Environment import WNTRGymEnv
 from Actor_Critic_Nets2 import GraphPPOAgent
-from Plot_Agents import PlottingCallback, plot_training_and_performance, plot_action_analysis, plot_final_agent_rewards_by_scenario
+from Plot_Agents import PlottingCallback, plot_training_and_performance, plot_action_analysis, plot_final_agent_rewards_by_scenario, plot_upgrades_per_timestep
 
 def train_agent_with_monitoring(net_type = 'both', time_steps = 50000):
     """
@@ -62,7 +62,7 @@ def train_agent_with_monitoring(net_type = 'both', time_steps = 50000):
     
     ppo_config = {
         "learning_rate": 3e-4, "n_steps": 2048, "batch_size": 64, "n_epochs": 10,
-        "gamma": 0.99, "gae_lambda": 0.95, "clip_range": 0.2, "ent_coef": 0.01,
+        "gamma": 0.9, "gae_lambda": 0.95, "clip_range": 0.2, "ent_coef": 0.01,
         "vf_coef": 0.5, "max_grad_norm": 0.5, "verbose": 1
     }
     
@@ -93,137 +93,259 @@ def evaluate_agent_by_scenario(model_path, pipes, scenarios, num_episodes_per_sc
     """
     Evaluates the trained agent for each scenario and collects the average rewards.
     """
-    print("\nEvaluating trained agent by scenario...")
+    print(f"\nEvaluating DRL agent from {os.path.basename(model_path)}...")
     
-    # Load the trained agent
     # Create a single environment for evaluation
-    eval_env = WNTRGymEnv(pipes, scenarios)
+    # Use DummyVecEnv to wrap it, which is standard practice for SB3 evaluation
+    eval_env = DummyVecEnv([lambda: WNTRGymEnv(pipes, scenarios)])
+    
+    # The agent needs to be created with the evaluation environment
     agent = GraphPPOAgent(eval_env, pipes)
+    # agent.load(model_path, env=eval_env)
     agent.load(model_path)
 
     scenario_rewards = {}
 
     for scenario in scenarios:
-        print(f"\nEvaluating scenario: {scenario}")
+        print(f"  - Evaluating scenario: {scenario}")
         episode_rewards = []
         for episode in range(num_episodes_per_scenario):
-            # Force the environment to reset to the specific scenario
-            obs, _ = eval_env.reset(options={'scenario': scenario})
+            # The environment automatically cycles through scenarios, but this structure ensures we capture results for each
+            # For more targeted scenario evaluation, the WNTRGymEnv reset method would need modification
+            # to deterministically select a scenario. For now, we rely on broad evaluation.
+            obs = eval_env.reset()
             total_reward = 0
             done = False
             while not done:
                 action, _ = agent.predict(obs, deterministic=True)
-                obs, reward, terminated, truncated, info = eval_env.step(action)
-                done = terminated or truncated
-                total_reward += reward
+                obs, reward, done, info = eval_env.step(action)
+                total_reward += reward[0] # Reward from vectorized env is a list
             episode_rewards.append(total_reward)
-            print(f"  Episode {episode + 1}/{num_episodes_per_scenario} | Total Reward: {total_reward:.2f}")
         
         avg_reward = np.mean(episode_rewards)
         scenario_rewards[scenario] = avg_reward
-        print(f"  Average reward for {scenario}: {avg_reward:.2f}")
 
     eval_env.close()
     return scenario_rewards
 
-# Add this new function in Train_w_Plots.py
 def evaluate_random_policy_by_scenario(pipes, scenarios, num_episodes_per_scenario=3):
+    """
+    Evaluates a random policy for each scenario to provide a baseline.
+    """
     print("\nEvaluating Random Policy by scenario...")
-    eval_env = WNTRGymEnv(pipes, scenarios) # (similar to evaluate_agent_by_scenario)
+    eval_env = WNTRGymEnv(pipes, scenarios)
     scenario_rewards = {}
 
-    for scenario in scenarios: #
-        print(f"\nEvaluating Random Policy on scenario: {scenario}")
+    for scenario in scenarios:
+        print(f"  - Evaluating scenario: {scenario}")
         episode_rewards = []
-        for episode in range(num_episodes_per_scenario): #
-            obs, _ = eval_env.reset(options={'scenario': scenario}) #
+        for _ in range(num_episodes_per_scenario):
+            obs, _ = eval_env.reset()
             total_reward = 0
             done = False
             while not done:
-                action_mask = eval_env.get_action_mask() # (method in WNTRGymEnv)
+                action_mask = eval_env.get_action_mask()
                 valid_actions = np.where(action_mask)[0]
-                if len(valid_actions) > 0:
-                    action = np.random.choice(valid_actions)
-                else:
-                    action = 0 # Fallback if no valid actions (should not happen with 'do nothing')
+                action = np.random.choice(valid_actions) if len(valid_actions) > 0 else 0
+                obs, reward, terminated, truncated, info = eval_env.step(action)
+                done = terminated or truncated
+                total_reward += reward
+            episode_rewards.append(total_reward)
 
-                obs, reward, terminated, truncated, info = eval_env.step(action) #
-                done = terminated or truncated #
-                total_reward += reward #
-            episode_rewards.append(total_reward) #
-            print(f"  Random Policy - Episode {episode + 1}/{num_episodes_per_scenario} | Total Reward: {total_reward:.2f}")
+        avg_reward = np.mean(episode_rewards)
+        scenario_rewards[scenario] = avg_reward
 
-        avg_reward = np.mean(episode_rewards) #
-        scenario_rewards[scenario] = avg_reward #
-        print(f"  Average Random Policy reward for {scenario}: {avg_reward:.2f}")
-
-    eval_env.close() #
+    eval_env.close()
     return scenario_rewards
 
+def generate_and_save_plots(model_path, log_path, drl_results, random_results, pipes, scenarios):
+    """
+    Helper function to generate and save all plots for a given training run.
+    """
+    print(f"\nGenerating and saving plots for {os.path.basename(model_path)}...")
+    
+    model_timestamp = os.path.basename(log_path).replace('training_log_', '').replace('.csv', '')
+
+    # Define save directories
+    plots_dir = "Plots"
+    perf_save_path = os.path.join(plots_dir, "Training_and_Performance")
+    action_save_path = os.path.join(plots_dir, "Action_Analysis")
+    scenario_save_path = os.path.join(plots_dir, "Reward_by_Scenario")
+    
+    os.makedirs(perf_save_path, exist_ok=True)
+    os.makedirs(action_save_path, exist_ok=True)
+    os.makedirs(scenario_save_path, exist_ok=True)
+
+    # Plot 1 & 2: Training and Step-wise Performance
+    figs_performance = plot_training_and_performance(log_path)
+    if figs_performance and all(fig is not None for fig in figs_performance):
+        figs_performance[0].savefig(os.path.join(perf_save_path, f"training_metrics_{model_timestamp}.png"))
+        figs_performance[1].savefig(os.path.join(perf_save_path, f"stepwise_performance_{model_timestamp}.png"))
+        plt.close(figs_performance[0])
+        plt.close(figs_performance[1])
+        print("  - Saved training and performance plots.")
+
+    # # Plot 3: Action Analysis (this part is unchanged)
+    # fig_actions = plot_action_analysis(log_path)
+    # if fig_actions:
+    #     fig_actions.savefig(os.path.join(action_save_path, f"action_analysis_{model_timestamp}.png"))
+    #     plt.close(fig_actions)
+    #     print("  - Saved action analysis plot.")
+
+    # Plot 4: Final Reward by Scenario
+    fig_scenarios = plot_final_agent_rewards_by_scenario(drl_results, random_results)
+    if fig_scenarios:
+        fig_scenarios.savefig(os.path.join(scenario_save_path, f"scenario_rewards_{model_timestamp}.png"))
+        plt.close(fig_scenarios)
+        print("  - Saved scenario reward comparison plot.")
+        
+    # Plot 5: Agent Upgrade Frequency per Time Step
+    print("  - Generating upgrade frequency plot...")
+    fig_actions = plot_upgrades_per_timestep(
+        model_path=model_path,
+        pipes=pipes,
+        scenarios=scenarios,
+        num_episodes=24 # A good number for averaging across all 12 scenarios twice
+    )
+
+    if fig_actions:
+        fig_actions.savefig(os.path.join(action_save_path, f"action_analysis_{model_timestamp}.png"))
+        plt.close(fig_actions)
+        print("  - Saved upgrade frequency plot.")
+
 if __name__ == "__main__":
+    # --- Overall Configuration ---
+    pipes = {
+        'Pipe_1': {'diameter': 0.3048, 'unit_cost': 36.58},
+        'Pipe_2': {'diameter': 0.4064, 'unit_cost': 56.32},
+        'Pipe_3': {'diameter': 0.5080, 'unit_cost': 78.71},
+        'Pipe_4': {'diameter': 0.6096, 'unit_cost': 103.47},
+        'Pipe_5': {'diameter': 0.7620, 'unit_cost': 144.60},
+        'Pipe_6': {'diameter': 1.0160, 'unit_cost': 222.62}
+    }
+    ppo_config = {
+        "learning_rate": 3e-4, "n_steps": 2048, "batch_size": 64, "n_epochs": 10,
+        "gamma": 0.5, "gae_lambda": 0.95, "clip_range": 0.2, "ent_coef": 0.01,
+        "vf_coef": 0.5, "max_grad_norm": 0.5, "verbose": 1
+    }
 
-    # 1. Train the agent and log data
+    # Applying a low discount factor so the agent starts to prioritise short term rewwards more greatly
 
-    net_types = ['anytown', 'hanoi']
+    num_cpu = mp.cpu_count()
+    total_timesteps = 2048 # Short run through to chekc functionality
+    all_scenarios = [
+        'anytown_densifying_1', 'anytown_densifying_2', 'anytown_densifying_3', 'anytown_sprawling_1', 'anytown_sprawling_2', 'anytown_sprawling_3',
+        'hanoi_densifying_1', 'hanoi_densifying_2', 'hanoi_densifying_3', 'hanoi_sprawling_1', 'hanoi_sprawling_2', 'hanoi_sprawling_3'
+    ]
+    anytown_scenarios = [s for s in all_scenarios if 'anytown' in s]
+    hanoi_scenarios = [s for s in all_scenarios if 'hanoi' in s]
 
-    for net in net_types:
+    # ===================================================================
+    # --- AGENT 1: Anytown Only ---
+    # ===================================================================
+    print("\n" + "="*60)
+    print("### AGENT 1: TRAINING ON ANYTOWN ONLY ###")
+    print("="*60)
 
-        model_path, pipes, scenarios = train_agent_with_monitoring(net_type = net, time_steps=500000)
-        
-        # --- MODIFICATION START: Capture returned figure objects ---
-        print("\nGenerating plot data...")
+    # vec_env_anytown = SubprocVecEnv([lambda: WNTRGymEnv(pipes, anytown_scenarios) for _ in range(num_cpu)])
+    vec_env_anytown = DummyVecEnv([lambda: WNTRGymEnv(pipes, anytown_scenarios)])
+    agent1 = GraphPPOAgent(vec_env_anytown, pipes, **ppo_config)
+    
+    cb1 = PlottingCallback()
+    agent1.train(total_timesteps=total_timesteps, callback=cb1)
+    
+    ts1 = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    model_path1 = os.path.join("agents", f"agent1_anytown_only_{ts1}")
+    log_path1 = os.path.join("Plots", f"training_log_agent1_anytown_only_{ts1}.csv")
+    agent1.save(model_path1)
+    os.rename(os.path.join("Plots", "training_log.csv"), log_path1)
+    vec_env_anytown.close()
 
-        # Find log file path
-        script = os.path.dirname(__file__)
-        log_file = os.path.join(script, "Plots", "training_log.csv")
+    print(f"Agent 1 training complete. Model: {model_path1}, Log: {log_path1}")
+    drl1_results = evaluate_agent_by_scenario(model_path1, pipes, anytown_scenarios)
+    rand1_results = evaluate_random_policy_by_scenario(pipes, anytown_scenarios)
+    generate_and_save_plots(model_path1, log_path1, drl1_results, rand1_results, pipes, anytown_scenarios)
 
-        # Add existence check
-        if not os.path.exists(log_file):
-            print(f"Warning: Log file not found at {log_file}")
-            print("Check that PlottingCallback is correctly saving data during training")
-            # Continue with the evaluation even if plots can't be generated
-            figs_performance = None
-            fig_actions = None
-        else:
-            figs_performance = plot_training_and_performance(log_file)
-            fig_actions = plot_action_analysis(log_file)
+    # ===================================================================
+    # --- AGENT 2: Hanoi Only ---
+    # ===================================================================
+    print("\n" + "="*60)
+    print("### AGENT 2: TRAINING ON HANOI ONLY ###")
+    print("="*60)
 
-        # 3. Evaluate the final agent on each scenario
-        drl_scenario_results = evaluate_agent_by_scenario(model_path, pipes, scenarios)
-        random_scenario_results = evaluate_random_policy_by_scenario(pipes, scenarios)
+    # vec_env_hanoi = SubprocVecEnv([lambda: WNTRGymEnv(pipes, hanoi_scenarios) for _ in range(num_cpu)])
+    vec_env_hanoi = DummyVecEnv([lambda: WNTRGymEnv(pipes, hanoi_scenarios)])
+    agent2 = GraphPPOAgent(vec_env_hanoi, pipes, **ppo_config)
+    
+    cb2 = PlottingCallback()
+    agent2.train(total_timesteps=total_timesteps, callback=cb2)
 
-        # 4. Plot the final scenario-based rewards
-        print("\nGenerating final agent performance plot data...")
-        fig_scenarios = plot_final_agent_rewards_by_scenario(drl_scenario_results, random_scenario_results)
+    ts2 = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    model_path2 = os.path.join("agents", f"agent2_hanoi_only_{ts2}")
+    log_path2 = os.path.join("Plots", f"training_log_agent2_hanoi_only_{ts2}.csv")
+    agent2.save(model_path2)
+    os.rename(os.path.join("Plots", "training_log.csv"), log_path2)
+    vec_env_hanoi.close()
+    
+    print(f"Agent 2 training complete. Model: {model_path2}, Log: {log_path2}")
+    drl2_results = evaluate_agent_by_scenario(model_path2, pipes, hanoi_scenarios)
+    rand2_results = evaluate_random_policy_by_scenario(pipes, hanoi_scenarios)
+    generate_and_save_plots(model_path2, log_path2, drl2_results, rand2_results, pipes, hanoi_scenarios)
 
-        # plt.show()
-        
-        # --- MODIFICATION: Explicitly save all captured figures ---
-        print("\nSaving all generated plots...")
-        # Extract timestamp from the model path to name plots consistently
-        model_timestamp = os.path.basename(model_path).replace('trained_gnn_ppo_wn_', '')
+    # ===================================================================
+    # --- AGENT 3: Anytown then Hanoi (Sequential) ---
+    # ===================================================================
+    print("\n" + "="*60)
+    print("### AGENT 3: SEQUENTIAL TRAINING (ANYTOWN -> HANOI) ###")
+    print("="*60)
+    
+    # --- Stage 3a: Train on Anytown ---
+    print("\n--- Stage 3a: Training on Anytown ---")
+    # vec_env_seq_anytown = SubprocVecEnv([lambda: WNTRGymEnv(pipes, anytown_scenarios) for _ in range(num_cpu)])
+    vec_env_seq_anytown = DummyVecEnv([lambda: WNTRGymEnv(pipes, anytown_scenarios)])
+    agent3_pre = GraphPPOAgent(vec_env_seq_anytown, pipes, **ppo_config)
+    
+    cb3a = PlottingCallback()
+    agent3_pre.train(total_timesteps=total_timesteps, callback=cb3a)
 
-        # Define save directories
-        perf_save_path = os.path.join("Plots", "Training and Performance")
-        action_save_path = os.path.join("Plots", "Action Analysis")
-        scenario_save_path = os.path.join("Plots", "Reward_by_Scenario")
-        
-        # Create directories if they don't exist
-        os.makedirs(perf_save_path, exist_ok=True)
-        os.makedirs(action_save_path, exist_ok=True)
-        os.makedirs(scenario_save_path, exist_ok=True)
-        
-        # Save the figures using the object-oriented method
-        if figs_performance:
-            figs_performance[0].savefig(os.path.join(perf_save_path, f"training_metrics_{model_timestamp}.png"))
-            figs_performance[1].savefig(os.path.join(perf_save_path, f"stepwise_performance_{model_timestamp}.png"))
-        if fig_actions:
-            fig_actions.savefig(os.path.join(action_save_path, f"action_analysis_{model_timestamp}.png"))
-        if fig_scenarios:
-            fig_scenarios.savefig(os.path.join(scenario_save_path, f"scenario_rewards_{model_timestamp}.png"))
-        
-        print("All plots saved.")
-        # --- MODIFICATION END ---
-        
-        print("\nAll tasks complete! Displaying plots...")
-        # plt.show()  # This will now display all four figures at once
+    ts3a = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    model_path3a = os.path.join("agents", f"agent3a_anytown_pre_finetune_{ts3a}")
+    log_path3a = os.path.join("Plots", f"training_log_agent3a_anytown_pre_finetune_{ts3a}.csv")
+    agent3_pre.save(model_path3a)
+    os.rename(os.path.join("Plots", "training_log.csv"), log_path3a)
+    vec_env_seq_anytown.close()
+    
+    print(f"Agent 3 pre-training complete. Model: {model_path3a}, Log: {log_path3a}")
+    # Optional: plot intermediate results for stage 3a
+    drl3a_results = evaluate_agent_by_scenario(model_path3a, pipes, anytown_scenarios)
+    rand3a_results = evaluate_random_policy_by_scenario(pipes, anytown_scenarios)
+    generate_and_save_plots(model_path3a, log_path3a, drl3a_results, rand3a_results, pipes, anytown_scenarios)
+
+    # --- Stage 3b: Fine-tune on Hanoi ---
+    print("\n--- Stage 3b: Fine-tuning on Hanoi ---")
+    # vec_env_seq_hanoi = SubprocVecEnv([lambda: WNTRGymEnv(pipes, hanoi_scenarios) for _ in range(num_cpu)])
+    vec_env_seq_hanoi = DummyVecEnv([lambda: WNTRGymEnv(pipes, hanoi_scenarios)])
+    agent3_final = GraphPPOAgent(vec_env_seq_hanoi, pipes, **ppo_config)
+    
+    print(f"Loading pre-trained model from {model_path3a}...")
+    agent3_final.load(model_path3a, env=vec_env_seq_hanoi)
+    
+    cb3b = PlottingCallback()
+    agent3_final.train(total_timesteps=total_timesteps, callback=cb3b)
+
+    ts3b = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    model_path3_final = os.path.join("agents", f"agent3b_final_finetuned_{ts3b}")
+    log_path3_final = os.path.join("Plots", f"training_log_agent3b_hanoi_finetuned_{ts3b}.csv")
+    agent3_final.save(model_path3_final)
+    os.rename(os.path.join("Plots", "training_log.csv"), log_path3_final)
+    vec_env_seq_hanoi.close()
+    
+    print(f"Agent 3 fine-tuning complete. Final Model: {model_path3_final}, Final Log: {log_path3_final}")
+    # Evaluate final agent on ALL scenarios to test generalization
+    drl3_final_results = evaluate_agent_by_scenario(model_path3_final, pipes, all_scenarios)
+    rand3_final_results = evaluate_random_policy_by_scenario(pipes, all_scenarios)
+    generate_and_save_plots(model_path3_final, log_path3_final, drl3_final_results, rand3_final_results, pipes, all_scenarios)
+
+    print("\n" + "="*60)
+    print("### ALL TRAINING RUNS COMPLETE ###")
+    print("="*60)
