@@ -114,7 +114,7 @@ def calculate_reward(
     
     # Normalise the pressure deficit ratio between 0 and the maximum pressure deficit (taken when all the pipes have the smallest possible diameter from selection)
 
-    pd_ratio = 1 - (pressure_deficit / max_pd) if max_pd else 0  # Where a PD ratio of 1 is the best possible outcome
+    pd_ratio = max(1 - (pressure_deficit / max_pd), 0) if max_pd else 0  # Where a PD ratio of 1 is the best possible outcome
 
     # ------------------------------------
     # Disconnection penalty
@@ -207,7 +207,7 @@ def compute_total_cost(initial_pipes, actions, labour_cost, energy_cost, pipes, 
                     break
 
     # Add all costs together
-    total_cost = pipe_upg_cost + labour_cost_total + energy_cost
+    total_cost = pipe_upg_cost + labour_cost_total + (energy_cost*(365/2)) # Energy in 6 month window
 
     print(f"Number of changes: {num_changes}, Pipe Upgrade Cost: {pipe_upg_cost}, Labour Cost Total: {labour_cost_total}, Energy Cost: {energy_cost}, Total Cost: {total_cost}")
 

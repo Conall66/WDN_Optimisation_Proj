@@ -41,8 +41,8 @@ def train_agent_with_monitoring(time_steps = 50000):
         return env
 
     num_cpu = mp.cpu_count()
-    # vec_env = SubprocVecEnv([make_env for _ in range(num_cpu)])
-    vec_env = DummyVecEnv([make_env])
+    vec_env = SubprocVecEnv([make_env for _ in range(num_cpu)]) # This line parallelises code
+    # vec_env = DummyVecEnv([make_env])
     
     ppo_config = {
         "learning_rate": 3e-4, "n_steps": 2048, "batch_size": 64, "n_epochs": 10,
@@ -110,13 +110,44 @@ def evaluate_agent_by_scenario(model_path, pipes, scenarios, num_episodes_per_sc
     eval_env.close()
     return scenario_rewards
 
+# Add this new function in Train_w_Plots.py
+def evaluate_random_policy_by_scenario(pipes, scenarios, num_episodes_per_scenario=3):
+    print("\nEvaluating Random Policy by scenario...")
+    eval_env = WNTRGymEnv(pipes, scenarios) # (similar to evaluate_agent_by_scenario)
+    scenario_rewards = {}
 
-# In Train_w_Plots.py
+    for scenario in scenarios: #
+        print(f"\nEvaluating Random Policy on scenario: {scenario}")
+        episode_rewards = []
+        for episode in range(num_episodes_per_scenario): #
+            obs, _ = eval_env.reset(options={'scenario': scenario}) #
+            total_reward = 0
+            done = False
+            while not done:
+                action_mask = eval_env.get_action_mask() # (method in WNTRGymEnv)
+                valid_actions = np.where(action_mask)[0]
+                if len(valid_actions) > 0:
+                    action = np.random.choice(valid_actions)
+                else:
+                    action = 0 # Fallback if no valid actions (should not happen with 'do nothing')
+
+                obs, reward, terminated, truncated, info = eval_env.step(action) #
+                done = terminated or truncated #
+                total_reward += reward #
+            episode_rewards.append(total_reward) #
+            print(f"  Random Policy - Episode {episode + 1}/{num_episodes_per_scenario} | Total Reward: {total_reward:.2f}")
+
+        avg_reward = np.mean(episode_rewards) #
+        scenario_rewards[scenario] = avg_reward #
+        print(f"  Average Random Policy reward for {scenario}: {avg_reward:.2f}")
+
+    eval_env.close() #
+    return scenario_rewards
 
 if __name__ == "__main__":
 
     # 1. Train the agent and log data
-    model_path, pipes, scenarios = train_agent_with_monitoring(time_steps=5000)
+    model_path, pipes, scenarios = train_agent_with_monitoring(time_steps=50000)
     
     # --- MODIFICATION START: Capture returned figure objects ---
     print("\nGenerating plot data...")
@@ -137,11 +168,14 @@ if __name__ == "__main__":
         fig_actions = plot_action_analysis(log_file)
 
     # 3. Evaluate the final agent on each scenario
-    scenario_results = evaluate_agent_by_scenario(model_path, pipes, scenarios)
+    drl_scenario_results = evaluate_agent_by_scenario(model_path, pipes, scenarios)
+    random_scenario_results = evaluate_random_policy_by_scenario(pipes, scenarios)
 
     # 4. Plot the final scenario-based rewards
     print("\nGenerating final agent performance plot data...")
-    fig_scenarios = plot_final_agent_rewards_by_scenario(scenario_results)
+    fig_scenarios = plot_final_agent_rewards_by_scenario(drl_scenario_results, random_scenario_results)
+
+    plt.show()
     
     # --- MODIFICATION: Explicitly save all captured figures ---
     print("\nSaving all generated plots...")
