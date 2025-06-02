@@ -142,6 +142,56 @@ def calculate_reward(
 
     return reward, cost, pd_ratio, demand_satisfaction, disconnections, actions_causing_disconnections, downgraded_pipes
 
+def reward_just_pd(
+    current_network, 
+        original_pipe_diameters,  # Dictionary of original pipe diameters
+        actions,                  # List of pipe ID diameter pairs representing the actions
+        pipes,                    # Dictionary of pipe types with unit costs
+        performance_metrics,
+        labour_cost,
+        downgraded_pipes,
+        disconnections=False,
+        actions_causing_disconnections=None,
+        max_pd = None,
+        max_cost = None):
+    
+    """This calculates the reward solely as a funciton of the pressure deficit"""
+
+     # Existing calculations can remain if you want to log these values via the info dict
+    # The print statement for "Calculating cost given provided actions..." can also remain or be removed.
+    # print("Calculating cost given provided actions...") 
+
+    initial_pipes = list(current_network.pipes())
+    energy_cost = performance_metrics['total_pump_cost']
+    
+    # Cost is still computed as it's part of the return tuple and might be logged
+    cost = compute_total_cost(initial_pipes, actions, labour_cost, energy_cost, pipes, original_pipe_diameters)
+    
+    pressure_deficit = performance_metrics['total_pressure_deficit']
+    demand_satisfaction = performance_metrics['demand_satisfaction_ratio'] # Still computed for info
+
+    # Original ratio calculations (can be kept for info, but won't be used in the primary reward)
+    cost_ratio_info = max(1 - (cost / max_cost), 0) if max_cost is not None and max_cost > 0 else 0
+    pd_ratio_info = max(1 - (pressure_deficit / max_pd), 0) if max_pd is not None and max_pd > 0 else 0
+    demand_satisfaction_info = max(demand_satisfaction, 0)
+
+    # --- MODIFIED REWARD CALCULATION ---
+    # The agent maximizes reward. To minimize pressure deficit, the reward should be -pressure_deficit.
+    # A smaller (closer to zero) pressure deficit results in a less negative (i.e., higher) reward.
+    reward = -pressure_deficit
+    # --- END OF MODIFIED REWARD CALCULATION ---
+
+    # Modify the print statement to reflect the new reward focus
+    print("-------------------------------------")
+    print(f"Simplified Reward (solely minimizing PD): {reward:.4f} (based on raw Pressure Deficit: {pressure_deficit:.4f})")
+    # You can still print other metrics if desired for debugging:
+    # print(f"  (For info: Cost={cost:.2f}, Demand Satisfaction={demand_satisfaction_info:.4f})")
+    print("------------------------------------")
+
+    # The function signature requires returning all these values.
+    # The agent will optimize based on the first 'reward' value.
+    return reward, cost, pd_ratio_info, demand_satisfaction_info, disconnections, actions_causing_disconnections, downgraded_pipes
+
 
 def compute_total_cost(initial_pipes, actions, labour_cost, energy_cost, pipes, original_pipe_diameters=None):
     """

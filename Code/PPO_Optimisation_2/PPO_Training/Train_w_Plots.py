@@ -163,9 +163,10 @@ def evaluate_random_policy_by_scenario(pipes, scenarios, num_episodes_per_scenar
             total_reward = 0
             done = False
             while not done:
-                action_mask = eval_env.get_action_mask()
-                valid_actions = np.where(action_mask)[0]
-                action = np.random.choice(valid_actions) if len(valid_actions) > 0 else 0
+                # action_mask = eval_env.get_action_mask()
+                # valid_actions = np.where(action_mask)[0]
+                action = eval_env.action_space.sample()  # Random action from the action space
+                # action = np.random.choice(valid_actions) if len(valid_actions) > 0 else 0
                 obs, reward, terminated, truncated, info = eval_env.step(action)
                 done = terminated or truncated
                 total_reward += reward
@@ -204,12 +205,12 @@ def generate_and_save_plots(model_path, log_path, drl_results, random_results, p
         plt.close(figs_performance[1])
         print("  - Saved training and performance plots.")
 
-    # # Plot 3: Action Analysis (this part is unchanged)
-    # fig_actions = plot_action_analysis(log_path)
-    # if fig_actions:
-    #     fig_actions.savefig(os.path.join(action_save_path, f"action_analysis_{model_timestamp}.png"))
-    #     plt.close(fig_actions)
-    #     print("  - Saved action analysis plot.")
+    # Plot 3: Action Analysis (this part is unchanged)
+    fig_actions = plot_action_analysis(log_path)
+    if fig_actions:
+        fig_actions.savefig(os.path.join(action_save_path, f"action_analysis_{model_timestamp}.png"))
+        plt.close(fig_actions)
+        print("  - Saved action analysis plot.")
 
     # Plot 4: Final Reward by Scenario
     fig_scenarios = plot_final_agent_rewards_by_scenario(drl_results, random_results)
@@ -387,7 +388,7 @@ def train_just_anytown():
     # Applying a low discount factor so the agent starts to prioritise short term rewwards more greatly
 
     num_cpu = mp.cpu_count()
-    total_timesteps = 2048 # Short run through to chekc functionality
+    total_timesteps = 100000
     all_scenarios = [
         'anytown_densifying_1', 'anytown_densifying_2', 'anytown_densifying_3', 'anytown_sprawling_1', 'anytown_sprawling_2', 'anytown_sprawling_3',
         'hanoi_densifying_1', 'hanoi_densifying_2', 'hanoi_densifying_3', 'hanoi_sprawling_1', 'hanoi_sprawling_2', 'hanoi_sprawling_3'

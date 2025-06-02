@@ -344,23 +344,23 @@ class GNNActorCriticPolicy(ActorCriticPolicy):
             **kwargs
         )
 
-class MaskableGNNActorCriticPolicy(MaskACP): # Inherit from MaskableActorCriticPolicy
-    """
-    Custom Maskable ActorCriticPolicy using GNN feature extraction.
-    """
-    def __init__(self, observation_space, action_space, lr_schedule, pipes_config, **kwargs):
+# class MaskableGNNActorCriticPolicy(MaskACP): # Inherit from MaskableActorCriticPolicy
+#     """
+#     Custom Maskable ActorCriticPolicy using GNN feature extraction.
+#     """
+#     def __init__(self, observation_space, action_space, lr_schedule, pipes_config, **kwargs):
 
-        kwargs.pop("use_sde", None)  # Remove use_sde as it's not supported by MaskableActorCriticPolicy
+#         kwargs.pop("use_sde", None)  # Remove use_sde as it's not supported by MaskableActorCriticPolicy
 
-        # Note: pipes_config is passed to features_extractor_kwargs
-        super().__init__( # Call MaskableActorCriticPolicy's __init__
-            observation_space,
-            action_space,
-            lr_schedule,
-            features_extractor_class=GNNFeatureExtractor, # Your GNNFeatureExtractor
-            features_extractor_kwargs={"pipes_config": pipes_config},
-            **kwargs
-        )
+#         # Note: pipes_config is passed to features_extractor_kwargs
+#         super().__init__( # Call MaskableActorCriticPolicy's __init__
+#             observation_space,
+#             action_space,
+#             lr_schedule,
+#             features_extractor_class=GNNFeatureExtractor, # Your GNNFeatureExtractor
+#             features_extractor_kwargs={"pipes_config": pipes_config},
+#             **kwargs
+#         )
 
 class GraphPPOAgent:
     def __init__(self, env, pipes_config: Dict, **ppo_kwargs):
@@ -390,14 +390,8 @@ class GraphPPOAgent:
         # policy_kwargs for the policy's constructor
         policy_kwargs_for_agent = {"pipes_config": pipes_config}
 
-        # Ensure 'use_sde' is not in default_ppo_kwargs passed to MaskablePPO algo
-        # as the algo will manage its own self.use_sde attribute (usually False for discrete)
-        # The policy itself (MaskableGNNActorCriticPolicy) will handle the use_sde passed by the algo.
-        if "use_sde" in default_ppo_kwargs:
-             default_ppo_kwargs.pop("use_sde")
-
-        self.agent = MaskablePPO( # *** FIX 1: Use MaskablePPO ***
-            MaskableGNNActorCriticPolicy, # *** FIX 2: Use your GNN-based maskable policy ***
+        self.agent = PPO(
+            GNNActorCriticPolicy,  # Use your GNN-based policy
             env,
             policy_kwargs=policy_kwargs_for_agent,
             **default_ppo_kwargs

@@ -97,16 +97,44 @@ def plot_training_and_performance(log_file="training_log.csv"): #
     }
 
     for (r, c), (col, title, ylabel) in plot_cols_fig1.items():
-        df_plot = df_full[['timesteps', col]].dropna()
-        if not df_plot.empty:
-            axs1[r, c].plot(df_plot['timesteps'], df_plot[col])
-        else:
-            print(f"No data for '{col}' after dropping NaNs.")
-        axs1[r, c].set_title(title) #
-        axs1[r, c].set_xlabel('Timesteps') #
-        axs1[r, c].set_ylabel(ylabel) #
-        axs1[r,c].grid(True)
+        if col == 'total_reward': # Specific handling for 'total_reward'
+            df_plot_sb3_reward = df_full[['timesteps', 'total_reward']].dropna()
+            if not df_plot_sb3_reward.empty:
+                axs1[r, c].plot(df_plot_sb3_reward['timesteps'], df_plot_sb3_reward['total_reward'], label='Mean Episodic Reward (SB3)')
+                current_ylabel = 'Mean Episodic Reward (SB3)'
+            else:
+                print(f"No data for 'total_reward' (SB3's train/reward). Attempting to plot smoothed 'step_reward' instead.")
+                if 'step_reward' in df_full.columns:
+                    df_step_plot = df_full[['timesteps', 'step_reward']].dropna()
+                    if not df_step_plot.empty:
+                        # Determine a reasonable window size for smoothing
+                        window_size = min(50, len(df_step_plot) // 10) if len(df_step_plot) > 10 else 1
+                        if window_size == 0: window_size = 1
+                        
+                        axs1[r, c].plot(df_step_plot['timesteps'], 
+                                        df_step_plot['step_reward'].rolling(window=window_size, center=True, min_periods=1).mean(), 
+                                        label='Step Reward (Env - Smoothed)')
+                        current_ylabel = 'Step Reward (Env - Smoothed)'
+                        axs1[r, c].legend() # Add legend if using step_reward
+                    else:
+                        print("No data for 'step_reward' either.")
+                        current_ylabel = ylabel # Fallback to original label
+                else:
+                    print("No 'step_reward' column found in log for fallback.")
+                    current_ylabel = ylabel # Fallback to original label
+            axs1[r, c].set_ylabel(current_ylabel)
 
+        else: # For other metrics like kl_divergence, clip_fraction, entropy_loss
+            df_plot = df_full[['timesteps', col]].dropna()
+            if not df_plot.empty:
+                axs1[r, c].plot(df_plot['timesteps'], df_plot[col])
+            else:
+                print(f"No data for '{col}' after dropping NaNs.")
+            axs1[r, c].set_ylabel(ylabel)
+        
+        axs1[r, c].set_title(title)
+        axs1[r, c].set_xlabel('Timesteps')
+        axs1[r,c].grid(True)
 
     plt.tight_layout(rect=[0, 0, 1, 0.96]) #
     # Saving is now handled in Train_w_Plots.py

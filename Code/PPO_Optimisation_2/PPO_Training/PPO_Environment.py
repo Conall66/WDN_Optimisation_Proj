@@ -15,7 +15,7 @@ from typing import Dict, List, Tuple, Optional
 import networkx as nx
 
 from Hydraulic_Model import run_epanet_simulation, evaluate_network_performance
-from Reward import calculate_reward, compute_total_cost
+from Reward import calculate_reward, reward_just_pd, compute_total_cost
 
 class WNTRGymEnv(gym.Env):
     metadata = {'render_modes': ['human']}
@@ -68,9 +68,9 @@ class WNTRGymEnv(gym.Env):
             # Edge connectivity: Shape is [2, num_edges]. We use max_pipes * 2 for bidirectional edges.
             "edge_index": spaces.Box(low=0, high=max_nodes, shape=(2, max_pipes * 2), dtype=np.int32),
             # Global features: [num_nodes, num_pipes, current_pipe_index]
-            "globals": spaces.Box(low=-np.inf, high=np.inf, shape=(3,), dtype=np.float32),
-            # Action mask contains valid actions for each pipe
-            "action_mask": spaces.Box(low=0, high=1, shape=(self.action_space.n,), dtype=np.int8) # Or bool
+            "globals": spaces.Box(low=-np.inf, high=np.inf, shape=(3,), dtype=np.float32)
+
+            # ACTION MASK REMOVED
         })
 
     def load_network_states(self, scenario: str) -> Dict[int, str]:
@@ -138,14 +138,16 @@ class WNTRGymEnv(gym.Env):
 
         # --- Get the current action mask ---
         # This mask is crucial for MaskablePPO
-        current_action_mask = self.get_action_mask().astype(np.int8) # Ensure correct dtype
+        # current_action_mask = self.get_action_mask().astype(np.int8) # Ensure correct dtype
+
+        """Action mask not supported for custom environment setup in stable baselines3"""
 
         return {
             "nodes": node_features,
             "edges": edge_features,
             "edge_index": edge_index_array,
             "globals": global_features,
-            "action_mask": current_action_mask
+            # "action_mask": current_action_mask
         }
 
     # Ensure your _get_zero_observation() method (if you have one) also includes a zeroed 'action_mask'
@@ -155,7 +157,7 @@ class WNTRGymEnv(gym.Env):
             "edges": np.zeros((self.max_pipes, 4), dtype=np.float32),
             "edge_index": np.zeros((2, self.max_pipes * 2), dtype=np.int32),
             "globals": np.zeros((3,), dtype=np.float32),
-            "action_mask": np.ones((self.action_space.n,), dtype=np.int8) # Default to all actions valid if obs is zeroed
+            # "action_mask": np.ones((self.action_space.n,), dtype=np.int8) # Default to all actions valid if obs is zeroed
         }
 
     def reset(self, seed: Optional[int] = None, options: Optional[dict] = None, scenario_name: Optional[str] = None) -> Tuple[Dict, Dict]:
@@ -259,16 +261,16 @@ class WNTRGymEnv(gym.Env):
                 self.actions_this_timestep.append((pipe_name, new_diameter))
                 action_is_valid_upgrade = True
 
-        # If the chosen action was not a valid upgrade, the episode should be penalized
-        if not action_is_valid_upgrade:
-            # Penalize and end the episode immediately for taking an invalid action
+        # # If the chosen action was not a valid upgrade, the episode should be penalized
+        # if not action_is_valid_upgrade:
+        #     # Penalize and end the episode immediately for taking an invalid action
 
-            print(f"WARNING: Invalid action {action} on pipe {pipe_name} at index {self.current_pipe_index}. Original diameter: {old_diameter}, Action diameter: {self.pipe_diameter_options[action - 1] if action > 0 else 'do nothing'}")
+        #     print(f"WARNING: Invalid action {action} on pipe {pipe_name} at index {self.current_pipe_index}. Original diameter: {old_diameter}, Action diameter: {self.pipe_diameter_options[action - 1] if action > 0 else 'do nothing'}")
 
-            reward = -10.0 # A large penalty
-            terminated = True
-            obs = self.get_network_features()
-            return obs, reward, terminated, truncated, {} # Return immediately
+        #     reward = -10.0 # A large penalty
+        #     terminated = True
+        #     obs = self.get_network_features()
+        #     return obs, reward, terminated, truncated, {} # Return immediately
 
         self.current_pipe_index += 1
 
@@ -279,19 +281,34 @@ class WNTRGymEnv(gym.Env):
             
             if results:
 
-                reward_tuple = calculate_reward(
-                    self.current_network, 
-                    self.original_diameters_this_timestep, 
-                    self.actions_this_timestep, 
-                    self.pipes, 
-                    metrics, 
-                    self.labour_cost, 
-                    False, 
-                    False, 
-                    [],
-                    max_pd=self.current_max_pd,
-                    max_cost=self.current_max_cost # Pass max_cost
+                # reward_tuple = calculate_reward(
+                #     self.current_network, 
+                #     self.original_diameters_this_timestep, 
+                #     self.actions_this_timestep, 
+                #     self.pipes, 
+                #     metrics, 
+                #     self.labour_cost, 
+                #     False, 
+                #     False, 
+                #     [],
+                #     max_pd=self.current_max_pd,
+                #     max_cost=self.current_max_cost # Pass max_cost
+                # )
+
+                reward_tuple = reward_just_pd(
+                    self.current_network,
+                    self.original_diameters_this_timestep,
+                    self.actions_this_timestep,
+                    self.pipes,
+                    metrics, # performance_metrics
+                    self.labour_cost,
+                    False, # downgraded_pipes (assuming agent won't/can't downgrade)
+                    False, # disconnections (assuming not modeled or handled separately)
+                    [],    # actions_causing_disconnections
+                    max_pd=self.current_max_pd, # May not be used by reward_just_pd
+                    max_cost=self.current_max_cost # May not be used by reward_just_pd
                 )
+
                 reward = reward_tuple[0]
                 
                 # This is the data your plotting callback will log.
