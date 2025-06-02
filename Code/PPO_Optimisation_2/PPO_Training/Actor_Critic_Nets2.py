@@ -343,9 +343,9 @@ class GNNActorCriticPolicy(ActorCriticPolicy):
         )
 
 class GraphPPOAgent:
+
     """
-    PPO Agent with GNN-based policy for water distribution network optimization
-    
+    PPO Agent with GNN-based policy for water distribution network optimisation
     """
     
     def __init__(self, env, pipes_config: Dict, **ppo_kwargs):
@@ -359,8 +359,8 @@ class GraphPPOAgent:
         self.pipes_config = pipes_config
         self.graph_converter = WaterNetworkGraphConverter(pipes_config)
 
-        device = "cuda" if torch.cuda.is_available() else "cpu" # Use GPU to accelerate training if available
-        # device = "cpu" # Force CPU for my training - normally this would be deactivated as the GPU would be much faster
+        # device = "cuda" if torch.cuda.is_available() else "cpu" # Use GPU to accelerate training if available
+        device = "cpu" # Force CPU for my training - normally this would be deactivated as the GPU would be much faster
         print(f"Using device: {device}")
         
         # Default PPO parameters
@@ -377,7 +377,8 @@ class GraphPPOAgent:
 
         # Set device if not provided in ppo_kwargs
         if "device" not in ppo_kwargs:
-            device = "cuda" if torch.cuda.is_available() else "cpu"
+            # device = "cuda" if torch.cuda.is_available() else "cpu"
+            device = "cpu"  # Force CPU for my training - normally this would be deactivated as the GPU would be much faster
             default_ppo_kwargs["device"] = device
             print(f"Using device: {device}")
 

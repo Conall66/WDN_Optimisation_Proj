@@ -239,6 +239,9 @@ class WNTRGymEnv(gym.Env):
         # If the chosen action was not a valid upgrade, the episode should be penalized
         if not action_is_valid_upgrade:
             # Penalize and end the episode immediately for taking an invalid action
+
+            print(f"WARNING: Invalid action {action} on pipe {pipe_name} at index {self.current_pipe_index}. Original diameter: {old_diameter}, Action diameter: {self.pipe_diameter_options[action - 1] if action > 0 else 'do nothing'}")
+
             reward = -10.0 # A large penalty
             terminated = True
             obs = self.get_network_features()

@@ -5,6 +5,7 @@ import multiprocessing as mp
 import os
 import datetime
 import matplotlib.pyplot as plt
+import tqdm
 
 from stable_baselines3.common.vec_env import SubprocVecEnv
 from stable_baselines3.common.vec_env import DummyVecEnv
@@ -94,8 +95,18 @@ def evaluate_agent_by_scenario(model_path, pipes, scenarios, num_episodes_per_sc
     Evaluates the trained agent for each scenario and collects the average rewards.
     """
     print(f"\nEvaluating DRL agent from {os.path.basename(model_path)}...")
+
+    # def make_eval_env():
+    #      env = SimpleWNTRGymEnv(
+    #         pipes_config=PIPES_CONFIG,
+    #         target_scenario_name=TARGET_SCENARIO_NAME, # Crucially, evaluate on the same scenario
+    #         networks_folder=NETWORKS_FOLDER_PATH,
+    #         labour_cost_per_meter=LABOUR_COST_PER_METER
+    #     )
+    #      return env
     
     eval_env = DummyVecEnv([lambda: WNTRGymEnv(pipes, scenarios)])
+    # eval_env = SubprocVecEnv([]) # This line parallelises code
     
     agent = GraphPPOAgent(eval_env, pipes)
     agent.load(model_path)
@@ -373,14 +384,14 @@ def train_just_anytown():
     }
     ppo_config = {
         "learning_rate": 3e-4, "n_steps": 2048, "batch_size": 64, "n_epochs": 10,
-        "gamma": 0.5, "gae_lambda": 0.95, "clip_range": 0.2, "ent_coef": 0.01,
+        "gamma": 0.8, "gae_lambda": 0.95, "clip_range": 0.2, "ent_coef": 0.01,
         "vf_coef": 0.5, "max_grad_norm": 0.5, "verbose": 2
     }
 
     # Applying a low discount factor so the agent starts to prioritise short term rewwards more greatly
 
     num_cpu = mp.cpu_count()
-    total_timesteps = 2048 # Short run through to chekc functionality
+    total_timesteps = 16384 # Short run through to chekc functionality
     all_scenarios = [
         'anytown_densifying_1', 'anytown_densifying_2', 'anytown_densifying_3', 'anytown_sprawling_1', 'anytown_sprawling_2', 'anytown_sprawling_3',
         'hanoi_densifying_1', 'hanoi_densifying_2', 'hanoi_densifying_3', 'hanoi_sprawling_1', 'hanoi_sprawling_2', 'hanoi_sprawling_3'
@@ -394,6 +405,8 @@ def train_just_anytown():
     print("\n" + "="*60)
     print("### AGENT 1: TRAINING ON ANYTOWN ONLY ###")
     print("="*60)
+
+    start_time = time.time()
 
     # vec_env_anytown = SubprocVecEnv([lambda: WNTRGymEnv(pipes, anytown_scenarios) for _ in range(num_cpu)])
     vec_env_anytown = DummyVecEnv([lambda: WNTRGymEnv(pipes, anytown_scenarios)])
@@ -422,6 +435,8 @@ def train_just_anytown():
     drl1_results = evaluate_agent_by_scenario(model_path1, pipes, anytown_scenarios)
     rand1_results = evaluate_random_policy_by_scenario(pipes, anytown_scenarios)
     generate_and_save_plots(model_path1, log_path1, drl1_results, rand1_results, pipes, anytown_scenarios)
+
+    training_time = time.time() - start_time
 
     plt.show()  # Show plots if running interactively
     print("\n" + "="*60)

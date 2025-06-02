@@ -15,6 +15,7 @@ import networkx as nx
 import wntr
 import time
 import wntr.metrics.economic as economics
+import tempfile
 
 # convert networkx graph to .inp file
 
@@ -177,8 +178,31 @@ def run_epanet_simulation(wn, static=False):  # Changed default to False
     start_time = time.time()
 
     # Create a simulator object
-    sim = wntr.sim.EpanetSimulator(wn)
-    results = sim.run_sim()
+    # sim = wntr.sim.EpanetSimulator(wn)
+    # results = sim.run_sim()
+
+    original_cwd = os.getcwd() # Store the original CWD
+    results = None # Initialize results to None
+
+    # Create a unique temporary directory for this simulation run
+    with tempfile.TemporaryDirectory(prefix="wntr_sim_") as temp_dir_path:
+        try:
+            os.chdir(temp_dir_path) # Change CWD to the unique temp directory
+            # Now, when EpanetSimulator runs, its default temp files (like "temp.inp")
+            # will be created in this isolated directory.
+            
+            # print(f"Process {os.getpid()} using temp dir: {temp_dir_path}") # For debugging
+            sim = wntr.sim.EpanetSimulator(wn)
+            results = sim.run_sim()
+            time.sleep(0.1)  # Small delay to ensure all files are written before exiting context
+            
+        except Exception as e:
+            # Handle simulation error if needed, or let it propagate
+            print(f"Error during EPANET simulation in temp dir {temp_dir_path}: {e}")
+            # results will remain None or partial
+            raise # It's often better to re-raise to be caught by the environment's handler
+        finally:
+            os.chdir(original_cwd) # CRITICAL: Always change CWD back
 
     end_time = time.time()
     run_time = end_time - start_time
