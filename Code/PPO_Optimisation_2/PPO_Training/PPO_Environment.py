@@ -68,7 +68,9 @@ class WNTRGymEnv(gym.Env):
             # Edge connectivity: Shape is [2, num_edges]. We use max_pipes * 2 for bidirectional edges.
             "edge_index": spaces.Box(low=0, high=max_nodes, shape=(2, max_pipes * 2), dtype=np.int32),
             # Global features: [num_nodes, num_pipes, current_pipe_index]
-            "globals": spaces.Box(low=-np.inf, high=np.inf, shape=(3,), dtype=np.float32)
+            "globals": spaces.Box(low=-np.inf, high=np.inf, shape=(3,), dtype=np.float32),
+            # Action mask contains valid actions for each pipe
+            "action_mask": spaces.Box(low=0, high=1, shape=(self.action_space.n,), dtype=np.int8) # Or bool
         })
 
     def load_network_states(self, scenario: str) -> Dict[int, str]:
@@ -78,16 +80,22 @@ class WNTRGymEnv(gym.Env):
 
     def get_network_features(self) -> Dict[str, np.ndarray]:
         """
-        Extracts features, including edge_index, as a dictionary of padded numpy arrays.
+        Extracts features, including edge_index AND action_mask, 
+        as a dictionary of padded numpy arrays.
         """
         # --- Padded arrays for features ---
         node_features = np.zeros((self.max_nodes, 4), dtype=np.float32)
-        edge_features = np.zeros((self.max_pipes, 4), dtype=np.float32)
-        edge_index_array = np.zeros((2, self.max_pipes * 2), dtype=np.int32)
+        edge_features = np.zeros((self.max_pipes, 4), dtype=np.float32) # This size should be self.max_pipes * 2 if using bidirectional edge features
+        # Or ensure GNNFeatureExtractor handles self.max_pipes if features are per unique pipe
+        
+        # Assuming edge_features are per unique pipe (as in your current code)
+        # If your GNN expects edge features for bidirectional edges, this might need adjustment
+        # For now, sticking to your current edge_features shape of (self.max_pipes, 4)
+
+        edge_index_array = np.zeros((2, self.max_pipes * 2), dtype=np.int32) # For bidirectional graph edges
 
         # --- Map node names to a consistent integer index ---
-        # This is crucial for building the edge_index tensor correctly
-        node_list = list(self.current_network.junctions())
+        node_list = list(self.current_network.junctions()) # Consider if other node types should be here
         node_name_to_idx = {name: i for i, (name, _) in enumerate(node_list)}
         num_nodes = len(node_list)
 
@@ -95,44 +103,59 @@ class WNTRGymEnv(gym.Env):
         for i, (node_name, node) in enumerate(node_list):
             if i < self.max_nodes:
                 node_features[i] = [
-                    node.base_demand or 0.0,
-                    node.elevation or 0.0,
+                    node.base_demand if hasattr(node, 'base_demand') and node.base_demand is not None else 0.0,
+                    node.elevation if hasattr(node, 'elevation') else 0.0,
                     self.node_pressures.get(node_name, 0.0),
-                    1.0  # is_junction
+                    1.0  # is_junction (assuming only junctions are in node_list for now)
                 ]
-
+        
         # --- Extract Edge Features and Edge Index ---
-        edge_idx_list = []
-        num_pipes = len(self.pipe_names)
+        edge_idx_list_for_gnn = [] # For GNN's edge_index (bidirectional)
+        actual_num_pipes = len(self.pipe_names)
+
         for i, pipe_name in enumerate(self.pipe_names):
-            if i < self.max_pipes:
+            if i < self.max_pipes: # For edge_features array
                 pipe = self.current_network.get_link(pipe_name)
-                # Get start and end node indices from our map
+                is_current_pipe = 1.0 if i == self.current_pipe_index else 0.0
+                edge_features[i] = [pipe.diameter, pipe.length, pipe.roughness, is_current_pipe]
+                
                 start_node_idx = node_name_to_idx.get(pipe.start_node_name)
                 end_node_idx = node_name_to_idx.get(pipe.end_node_name)
 
-                # Only add edge if both nodes are in our junction list
                 if start_node_idx is not None and end_node_idx is not None:
-                    is_current_pipe = 1.0 if i == self.current_pipe_index else 0.0
-                    edge_features[i] = [pipe.diameter, pipe.length, pipe.roughness, is_current_pipe]
-                    
-                    # Add bidirectional edge to the index list
-                    edge_idx_list.append([start_node_idx, end_node_idx])
-                    edge_idx_list.append([end_node_idx, start_node_idx])
+                    edge_idx_list_for_gnn.append([start_node_idx, end_node_idx])
+                    edge_idx_list_for_gnn.append([end_node_idx, start_node_idx])
 
-        # Populate the padded edge_index array
-        if edge_idx_list:
-            edge_index_tensor = np.array(edge_idx_list, dtype=np.int32).T
-            edge_index_array[:, :edge_index_tensor.shape[1]] = edge_index_tensor
+        if edge_idx_list_for_gnn:
+            edge_index_tensor_gnn = np.array(edge_idx_list_for_gnn, dtype=np.int32).T
+            # Ensure slicing does not go out of bounds for edge_index_array
+            cols_to_copy = min(edge_index_tensor_gnn.shape[1], edge_index_array.shape[1])
+            edge_index_array[:, :cols_to_copy] = edge_index_tensor_gnn[:, :cols_to_copy]
+
 
         # --- Extract Global Features ---
-        global_features = np.array([num_nodes, num_pipes, self.current_pipe_index], dtype=np.float32)
+        global_features = np.array([num_nodes, actual_num_pipes, self.current_pipe_index], dtype=np.float32)
+
+        # --- Get the current action mask ---
+        # This mask is crucial for MaskablePPO
+        current_action_mask = self.get_action_mask().astype(np.int8) # Ensure correct dtype
 
         return {
-            "nodes": node_features, 
-            "edges": edge_features, 
-            "edge_index": edge_index_array, # Return the new array
-            "globals": global_features
+            "nodes": node_features,
+            "edges": edge_features,
+            "edge_index": edge_index_array,
+            "globals": global_features,
+            "action_mask": current_action_mask
+        }
+
+    # Ensure your _get_zero_observation() method (if you have one) also includes a zeroed 'action_mask'
+    def _get_zero_observation(self) -> Dict[str, np.ndarray]: # Example if you need this
+        return {
+            "nodes": np.zeros((self.max_nodes, 4), dtype=np.float32),
+            "edges": np.zeros((self.max_pipes, 4), dtype=np.float32),
+            "edge_index": np.zeros((2, self.max_pipes * 2), dtype=np.int32),
+            "globals": np.zeros((3,), dtype=np.float32),
+            "action_mask": np.ones((self.action_space.n,), dtype=np.int8) # Default to all actions valid if obs is zeroed
         }
 
     def reset(self, seed: Optional[int] = None, options: Optional[dict] = None, scenario_name: Optional[str] = None) -> Tuple[Dict, Dict]:

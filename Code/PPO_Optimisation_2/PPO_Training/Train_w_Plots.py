@@ -122,11 +122,7 @@ def evaluate_agent_by_scenario(model_path, pipes, scenarios, num_episodes_per_sc
             reset_output = eval_env.env_method("reset", scenario_name=scenario)
             obs = reset_output[0][0]
             
-            # --- START OF CORRECTION ---
-            # Manually add the batch dimension to the *initial* observation ONLY.
-            # The 'obs' variable will now consistently hold the batched observation.
             obs = {key: np.expand_dims(value, axis=0) for key, value in obs.items()}
-            # --- END OF CORRECTION ---
 
             total_reward = 0
             done = False
@@ -391,7 +387,7 @@ def train_just_anytown():
     # Applying a low discount factor so the agent starts to prioritise short term rewwards more greatly
 
     num_cpu = mp.cpu_count()
-    total_timesteps = 16384 # Short run through to chekc functionality
+    total_timesteps = 2048 # Short run through to chekc functionality
     all_scenarios = [
         'anytown_densifying_1', 'anytown_densifying_2', 'anytown_densifying_3', 'anytown_sprawling_1', 'anytown_sprawling_2', 'anytown_sprawling_3',
         'hanoi_densifying_1', 'hanoi_densifying_2', 'hanoi_densifying_3', 'hanoi_sprawling_1', 'hanoi_sprawling_2', 'hanoi_sprawling_3'

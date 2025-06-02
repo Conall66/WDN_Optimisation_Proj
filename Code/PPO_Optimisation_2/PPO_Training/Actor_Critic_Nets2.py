@@ -20,6 +20,8 @@ from torch_geometric.data import Data, Batch
 import numpy as np
 from typing import Dict, List, Tuple, Optional, Union
 import networkx as nx
+from sb3_contrib import MaskablePPO
+from sb3_contrib.common.maskable.policies import MaskableActorCriticPolicy as MaskACP
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 from stable_baselines3.common.policies import ActorCriticPolicy
 from stable_baselines3 import PPO
@@ -342,54 +344,62 @@ class GNNActorCriticPolicy(ActorCriticPolicy):
             **kwargs
         )
 
-class GraphPPOAgent:
+class MaskableGNNActorCriticPolicy(MaskACP): # Inherit from MaskableActorCriticPolicy
+    """
+    Custom Maskable ActorCriticPolicy using GNN feature extraction.
+    """
+    def __init__(self, observation_space, action_space, lr_schedule, pipes_config, **kwargs):
 
-    """
-    PPO Agent with GNN-based policy for water distribution network optimisation
-    """
-    
+        kwargs.pop("use_sde", None)  # Remove use_sde as it's not supported by MaskableActorCriticPolicy
+
+        # Note: pipes_config is passed to features_extractor_kwargs
+        super().__init__( # Call MaskableActorCriticPolicy's __init__
+            observation_space,
+            action_space,
+            lr_schedule,
+            features_extractor_class=GNNFeatureExtractor, # Your GNNFeatureExtractor
+            features_extractor_kwargs={"pipes_config": pipes_config},
+            **kwargs
+        )
+
+class GraphPPOAgent:
     def __init__(self, env, pipes_config: Dict, **ppo_kwargs):
-        """
-        Args:
-            env: Water network gym environment
-            pipes_config: Dictionary with pipe diameter options and costs
-            **ppo_kwargs: Additional arguments for PPO
-        """
         self.env = env
         self.pipes_config = pipes_config
-        self.graph_converter = WaterNetworkGraphConverter(pipes_config)
+        # self.graph_converter = WaterNetworkGraphConverter(pipes_config) # This is part of GNNFeatureExtractor now
 
-        # device = "cuda" if torch.cuda.is_available() else "cpu" # Use GPU to accelerate training if available
-        device = "cpu" # Force CPU for my training - normally this would be deactivated as the GPU would be much faster
+        device = "cpu" # Force CPU for my training
         print(f"Using device: {device}")
         
-        # Default PPO parameters
         default_ppo_kwargs = {
             "learning_rate": 3e-4,
             "n_steps": 2048,
             "batch_size": 64,
             "n_epochs": 10,
-            "gamma": 0.99,
+            "gamma": 0.99, # Consider increasing gamma for better long-term planning
             "gae_lambda": 0.95,
             "clip_range": 0.2,
-            "verbose": 2
+            "verbose": 1 # Changed from 2 for potentially cleaner logs
         }
 
-        # Set device if not provided in ppo_kwargs
         if "device" not in ppo_kwargs:
-            # device = "cuda" if torch.cuda.is_available() else "cpu"
-            device = "cpu"  # Force CPU for my training - normally this would be deactivated as the GPU would be much faster
             default_ppo_kwargs["device"] = device
-            print(f"Using device: {device}")
 
-        # Update default kwargs with provided kwargs
         default_ppo_kwargs.update(ppo_kwargs)
         
-        # Create PPO agent with custom policy
-        self.agent = PPO(
-            GNNActorCriticPolicy,
+        # policy_kwargs for the policy's constructor
+        policy_kwargs_for_agent = {"pipes_config": pipes_config}
+
+        # Ensure 'use_sde' is not in default_ppo_kwargs passed to MaskablePPO algo
+        # as the algo will manage its own self.use_sde attribute (usually False for discrete)
+        # The policy itself (MaskableGNNActorCriticPolicy) will handle the use_sde passed by the algo.
+        if "use_sde" in default_ppo_kwargs:
+             default_ppo_kwargs.pop("use_sde")
+
+        self.agent = MaskablePPO( # *** FIX 1: Use MaskablePPO ***
+            MaskableGNNActorCriticPolicy, # *** FIX 2: Use your GNN-based maskable policy ***
             env,
-            policy_kwargs={"pipes_config": pipes_config},
+            policy_kwargs=policy_kwargs_for_agent,
             **default_ppo_kwargs
         )
     
