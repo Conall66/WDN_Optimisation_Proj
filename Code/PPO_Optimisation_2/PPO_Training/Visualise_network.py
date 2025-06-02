@@ -18,6 +18,8 @@ from PPO_Environment import WNTRGymEnv
 from Actor_Critic_Nets2 import GraphPPOAgent
 from stable_baselines3.common.vec_env import DummyVecEnv
 
+from Hydraulic_Model import run_epanet_simulation, evaluate_network_performance
+
 def visualise_demands(wn, title, save_path = None, show = False):
     
     # Plot network with demand values at each junction
@@ -207,247 +209,142 @@ def visualise_demands(wn, title, save_path = None, show = False):
     return figure
 
 
-def visualise_network(wn, results, title, save_path, mode='2d', show = False):
+def visualise_network(wn, results, title, save_path, mode='2d', show=False, ax=None): # ADD ax=None
     """
-    Visualise the water distribution network with pressure maps.
+    Visualise the water distribution network with pressure maps on a given axis.
 
     Parameters:
     wn (wntr.network.WaterNetworkModel): The water network model.
     results (wntr.sim.EpanetSimulator): The EPANET simulation results.
     title (str): Title of the plot.
     save_path (str): Path to save the visualisation.
-    mode (str): Visualization mode, either '2d' or '3d' (default: '3d').
-
-    Returns:
-    figure: The matplotlib figure object.
+    mode (str): visualisation mode, either '2d' or '3d'.
+    show (bool): Whether to display the plot.
+    ax (matplotlib.axes.Axes, optional): The subplot axis to draw on. If None, a new figure is created.
     """
     # Validate mode parameter
-    if mode.lower() not in ['2d', '3d']:
+    if mode.lower() not in ['2d', '3d']: #
         raise ValueError("Mode must be either '2d' or '3d'")
     
-    mode = mode.lower()
+    mode = mode.lower() #
     
-    # Create a figure
-    figure = plt.figure(figsize=(10, 10))
-    
-    # Set up appropriate axes based on mode
-    if mode == '3d':
-        ax = figure.add_subplot(111, projection='3d')
-        ax.set_zlabel('Elevation (m)')
-    else:  # 2d mode
-        ax = figure.add_subplot(111)
-    
-    ax.set_title(title)
-    ax.set_xlabel('X Coordinate')
-    ax.set_ylabel('Y Coordinate')
-
-    # Get network graph, positions, and elevations
-    G = wn.to_graph()
-
-    pos = wn.query_node_attribute('coordinates')
-    # Check node positions exist
-
-    # Extract data from results
-    if results:
-        pressures = results.node['pressure'].iloc[0].to_dict()
-
-    # Get node lists by type
-    reservoirs = wn.reservoir_name_list
-    tanks = wn.tank_name_list
-    junctions = wn.junction_name_list
-    valves = wn.valve_name_list
-    pumps = wn.pump_name_list
-    pipes = wn.pipe_name_list
-
-    # Assigns unique markers to each type of node
-    node_markers = {
-        'reservoir': 'o',
-        'tank': '^',
-        'junction': 's',
-        'valve': 'D',
-        'pump': 'X'
-    }
-
-    # Assign unique colours to each type of node
-    node_colors = {
-        'reservoir': 'blue',
-        'tank': 'green',
-        'junction': 'orange',
-        'valve': 'purple',
-        'pump': 'red'
-    }
-
-    # Override the colours of junctions with the pressure values
-    if results:
-        pressure_norm = Normalize(vmin=np.min(list(pressures.values())), vmax=np.max(list(pressures.values())))
-        pressure_cmap = plt.get_cmap('magma')
-        pressure_colors = {node: pressure_cmap(pressure_norm(value)) for node, value in pressures.items()}
-        
-        # Create a ScalarMappable for the pressure color map
-        pressure_sm = ScalarMappable(cmap=pressure_cmap, norm=pressure_norm)
-        pressure_sm.set_array([])  # Only needed for colorbar
-        
-        # Create a colorbar for pressure
-        cbar = plt.colorbar(pressure_sm, ax=ax, shrink=0.5)
-        cbar.set_label('Pressure (m)')
-        min_pressure = np.min(list(pressures.values()))
-        max_pressure = np.max(list(pressures.values()))
-        cbar.set_ticks([min_pressure, max_pressure])
-        cbar.set_ticklabels([f"{min_pressure:.2f}", f"{max_pressure:.2f}"])
-    else:
-        pressure_colors = {}
-
-    # Plot nodes with unique markers and colours
-    legend_handles = []
-    legend_labels = []
-
-    for node_type, marker in node_markers.items():
-        if node_type == 'reservoir':
-            node_list = reservoirs
-        elif node_type == 'tank':
-            node_list = tanks
-        elif node_type == 'junction':
-            node_list = junctions
-        elif node_type == 'valve':
-            node_list = valves
-        elif node_type == 'pump':
-            node_list = pumps
+    # --- START OF MODIFIED SECTION for using provided 'ax' ---
+    if ax is None:
+        # If no axis is provided, create a new figure and axis
+        figure = plt.figure(figsize=(10, 10)) #
+        if mode == '3d':
+            ax = figure.add_subplot(111, projection='3d') #
         else:
-            continue
-
-        for node in node_list:
-            if node in pos:
-                color = pressure_colors.get(node, node_colors[node_type])
-                
-                if mode == '3d':
-                    # 3D plotting
-                    scatter = ax.scatter(
-                        pos[node][0],
-                        pos[node][1],
-                        get_node_elevation(wn, node),
-                        marker=marker,
-                        color=color,
-                        s=100
-                    )
-                else:
-                    # 2D plotting
-                    scatter = ax.scatter(
-                        pos[node][0],
-                        pos[node][1],
-                        marker=marker,
-                        color=color,
-                        s=100
-                    )
-                
-                # Add to legend once per node type
-                if node_type.capitalize() not in legend_labels:
-                    legend_handles.append(scatter)
-                    legend_labels.append(node_type.capitalize())
-
-    # Plot pipes
-    # Get min/max diameters for line width scaling
-    pipe_diameters = [wn.get_link(pipe).diameter for pipe in pipes]
-    min_diam = min(pipe_diameters) if pipe_diameters else 0
-    max_diam = max(pipe_diameters) if pipe_diameters else 1
-    diam_range = max_diam - min_diam
-
-    for pipe in pipes:
-        pipe_obj = wn.get_link(pipe)
-        start_node = pipe_obj.start_node_name
-        end_node = pipe_obj.end_node_name
-        
-        # Make sure the nodes exist in the position dictionary
-        if start_node in pos and end_node in pos:
-            start_pos = pos[start_node]
-            end_pos = pos[end_node]
-            start_elev = get_node_elevation(wn, start_node)
-            end_elev = get_node_elevation(wn, end_node)
-            
-            # Get pipe diameter for line width
-            diameter = pipe_obj.diameter
-            # Normalize width between 1 and 3
-            width = 1 + 2 * ((diameter - min_diam) / diam_range) if diam_range != 0 else 1
-            
-            # Plot the pipe with a standard gray color
-            if mode == '3d':
-                # 3D pipe plot
-                ax.plot([start_pos[0], end_pos[0]], 
-                        [start_pos[1], end_pos[1]], 
-                        [start_elev, end_elev], 
-                        color='gray', 
-                        linewidth=width)
-            else:
-                # 2D pipe plot
-                ax.plot([start_pos[0], end_pos[0]], 
-                        [start_pos[1], end_pos[1]], 
-                        color='gray', 
-                        linewidth=width)
-                
-    pump_line = None  # Variable to store a line object for the legend
-    for pump_name in pumps:
-        pump = wn.get_link(pump_name)
-        start_node = pump.start_node_name
-        end_node = pump.end_node_name
-        
-        if start_node in pos and end_node in pos:
-            start_pos = pos[start_node]
-            end_pos = pos[end_node]
-            start_elev = get_node_elevation(wn, start_node)
-            end_elev = get_node_elevation(wn, end_node)
-            
-            # Use a dashed red line for pumps to make them stand out
-            if mode == '3d':
-                pump_line = ax.plot([start_pos[0], end_pos[0]], 
-                        [start_pos[1], end_pos[1]], 
-                        [start_elev, end_elev], 
-                        color='red', 
-                        linewidth=2,
-                        linestyle='--',
-                        zorder=6)[0]  # Get the Line2D object
-                # # Add a label to identify the pump
-                # mid_x = (start_pos[0] + end_pos[0]) / 2
-                # mid_y = (start_pos[1] + end_pos[1]) / 2
-                # mid_z = (start_elev + end_elev) / 2
-                # ax.text(mid_x, mid_y, mid_z, f"Pump {pump_name}", 
-                #         color='black', fontsize=8, 
-                #         bbox=dict(facecolor='white', alpha=0.7),
-                #         zorder=15)
-            else:
-                pump_line = ax.plot([start_pos[0], end_pos[0]], 
-                        [start_pos[1], end_pos[1]], 
-                        color='red', 
-                        linewidth=2,
-                        linestyle='--',
-                        zorder=6)[0]  # Get the Line2D object
-                
-                # Add a label to identify the pump
-                mid_x = (start_pos[0] + end_pos[0]) / 2
-                mid_y = (start_pos[1] + end_pos[1]) / 2
-                ax.text(mid_x, mid_y, f"Pump {pump_name}", 
-                        color='black', fontsize=8, 
-                        bbox=dict(facecolor='white', alpha=0.7),
-                        zorder=15)
-
-    # Add pump line to legend if pumps exist
-    if pump_line is not None:
-        legend_handles.append(pump_line)
-        legend_labels.append('Pump Connection')
-
-    # Set the view angle for 3D mode
-    if mode == '3d':
-        ax.view_init(elev=30, azim=30)
-
-    # Add legend for markers
-    ax.legend(legend_handles, legend_labels, loc='upper right', fontsize=10)
-
-    # Adjust layout and save
-    plt.tight_layout()
-    if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    if show:
-        plt.show()
+            ax = figure.add_subplot(111) #
+    else:
+        # If an axis is provided, use it and get its parent figure
+        figure = ax.get_figure()
+    # --- END OF MODIFIED SECTION ---
     
-    return figure
+    ax.set_title(title) #
+    ax.set_xlabel('X Coordinate') #
+    ax.set_ylabel('Y Coordinate') #
+    if mode == '3d':
+        ax.set_zlabel('Elevation (m)') #
+
+    pos = wn.query_node_attribute('coordinates') #
+
+    if results:
+        pressures = results.node['pressure'].iloc[0].to_dict() #
+        pressure_norm = Normalize(vmin=np.min(list(pressures.values())), vmax=np.max(list(pressures.values()))) #
+        pressure_cmap = plt.get_cmap('magma') #
+        pressure_colors = {node: pressure_cmap(pressure_norm(value)) for node, value in pressures.items()} #
+        
+        pressure_sm = ScalarMappable(cmap=pressure_cmap, norm=pressure_norm) #
+        pressure_sm.set_array([]) #
+        
+        # Use figure.colorbar to attach to the correct figure when using subplots
+        cbar = figure.colorbar(pressure_sm, ax=ax, shrink=0.5, aspect=10) # Modified to use figure.colorbar
+        cbar.set_label('Pressure (m)') #
+        min_pressure = np.min(list(pressures.values())) #
+        max_pressure = np.max(list(pressures.values())) #
+        cbar.set_ticks([min_pressure, max_pressure]) #
+        cbar.set_ticklabels([f"{min_pressure:.2f}", f"{max_pressure:.2f}"]) #
+    else:
+        pressure_colors = {} #
+
+    node_markers = {
+        'reservoir': 'o', 'tank': '^', 'junction': 's',
+        'valve': 'D', 'pump': 'X'
+    } #
+    node_colors = {
+        'reservoir': 'blue', 'tank': 'green', 'junction': 'orange',
+        'valve': 'purple', 'pump': 'red'
+    } #
+    legend_handles = [] #
+    legend_labels = [] #
+
+    for node_type_key, marker_symbol in node_markers.items(): #
+        node_list_attr = getattr(wn, f"{node_type_key}_name_list", []) #
+        for node_name_val in node_list_attr: #
+            if node_name_val in pos: #
+                color_val = pressure_colors.get(node_name_val, node_colors[node_type_key]) #
+                if mode == '3d':
+                    scatter_obj = ax.scatter(
+                        pos[node_name_val][0], pos[node_name_val][1], get_node_elevation(wn, node_name_val), #
+                        marker=marker_symbol, color=color_val, s=100
+                    ) #
+                else:
+                    scatter_obj = ax.scatter(
+                        pos[node_name_val][0], pos[node_name_val][1], #
+                        marker=marker_symbol, color=color_val, s=100
+                    ) #
+                if node_type_key.capitalize() not in legend_labels: #
+                    legend_handles.append(scatter_obj) #
+                    legend_labels.append(node_type_key.capitalize()) #
+
+    pipe_name_list_val = wn.pipe_name_list #
+    pipe_diameters_val = [wn.get_link(p_name).diameter for p_name in pipe_name_list_val] #
+    min_diam_val = min(pipe_diameters_val) if pipe_diameters_val else 0 #
+    max_diam_val = max(pipe_diameters_val) if pipe_diameters_val else 1 #
+    diam_range_val = max_diam_val - min_diam_val #
+
+    for p_name_val in pipe_name_list_val: #
+        pipe_obj_val = wn.get_link(p_name_val) #
+        start_node_name_val, end_node_name_val = pipe_obj_val.start_node_name, pipe_obj_val.end_node_name #
+        if start_node_name_val in pos and end_node_name_val in pos: #
+            start_pos_val, end_pos_val = pos[start_node_name_val], pos[end_node_name_val] #
+            start_elev_val, end_elev_val = get_node_elevation(wn, start_node_name_val), get_node_elevation(wn, end_node_name_val) #
+            diameter_val = pipe_obj_val.diameter #
+            width_val = 1 + 2 * ((diameter_val - min_diam_val) / diam_range_val) if diam_range_val != 0 else 1 #
+            if mode == '3d':
+                ax.plot([start_pos_val[0], end_pos_val[0]], [start_pos_val[1], end_pos_val[1]], [start_elev_val, end_elev_val], color='gray', linewidth=width_val) #
+            else:
+                ax.plot([start_pos_val[0], end_pos_val[0]], [start_pos_val[1], end_pos_val[1]], color='gray', linewidth=width_val) #
+                
+    pump_line_obj = None #
+    for pump_name_val in wn.pump_name_list: #
+        pump_obj = wn.get_link(pump_name_val) #
+        start_node_name_val, end_node_name_val = pump_obj.start_node_name, pump_obj.end_node_name #
+        if start_node_name_val in pos and end_node_name_val in pos: #
+            start_pos_val, end_pos_val = pos[start_node_name_val], pos[end_node_name_val] #
+            start_elev_val, end_elev_val = get_node_elevation(wn, start_node_name_val), get_node_elevation(wn, end_node_name_val) #
+            if mode == '3d':
+                pump_line_obj = ax.plot([start_pos_val[0], end_pos_val[0]], [start_pos_val[1], end_pos_val[1]], [start_elev_val, end_elev_val], color='red', linewidth=2, linestyle='--', zorder=6)[0] #
+            else:
+                pump_line_obj = ax.plot([start_pos_val[0], end_pos_val[0]], [start_pos_val[1], end_pos_val[1]], color='red', linewidth=2, linestyle='--', zorder=6)[0] #
+
+    if pump_line_obj is not None: #
+        legend_handles.append(pump_line_obj) #
+        legend_labels.append('Pump Connection') #
+
+    if mode == '3d':
+        ax.view_init(elev=30, azim=30) #
+
+    ax.legend(legend_handles, legend_labels, loc='upper right', fontsize=10) #
+    plt.tight_layout() #
+
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight') #
+    if show:
+        plt.show() #
+    
+    return figure #
 
 def get_node_elevation(wn, node_name):
     """
@@ -480,10 +377,10 @@ def get_node_elevation(wn, node_name):
 # sim = wntr.sim.EpanetSimulator(wn)
 # results = sim.run_sim()
 # 
-# # For 3D visualization
+# # For 3D visualisation
 # visualise_network(wn, results, "Network in 3D", "network_3d.png", mode='3d')
 # 
-# # For 2D visualization
+# # For 2D visualisation
 # visualise_network(wn, results, "Network in 2D", "network_2d.png", mode='2d')
 
 def visualise_scenario(model_path: str, scenario_name: str, time_step_to_visualise: int):
@@ -495,7 +392,7 @@ def visualise_scenario(model_path: str, scenario_name: str, time_step_to_visuali
         scenario_name (str): The name of the scenario to run (e.g., 'anytown_sprawling_3').
         time_step_to_visualise (int): The specific time step within the scenario to visualise (e.g., 5).
     """
-    print(f"\n--- Visualizing Agent Decisions ---")
+    print(f"\n--- visualising Agent Decisions ---")
     print(f"Model: {model_path}")
     print(f"Scenario: {scenario_name}, Time Step: {time_step_to_visualise}")
 
@@ -550,7 +447,7 @@ def visualise_scenario(model_path: str, scenario_name: str, time_step_to_visuali
         done = terminated or truncated
 
     # --- 4. Prepare for Plotting ---
-    # Use the network state *before* the agent's changes for the visualization base
+    # Use the network state *before* the agent's changes for the visualisation base
     wn = network_before_changes
     link_colors = {}
     link_widths = {}
@@ -565,7 +462,7 @@ def visualise_scenario(model_path: str, scenario_name: str, time_step_to_visuali
         link_colors[pipe_name] = 'crimson' # Color for upgraded pipes
         link_widths[pipe_name] = 4.0      # Thicker line for upgraded pipes
 
-    # --- 5. Generate and Save the Visualization ---
+    # --- 5. Generate and Save the visualisation ---
     fig, ax = plt.subplots(figsize=(15, 12))
     wntr.graphics.plot_network(
         wn,
@@ -588,13 +485,49 @@ def visualise_scenario(model_path: str, scenario_name: str, time_step_to_visuali
     os.makedirs(plots_dir, exist_ok=True)
     save_path = os.path.join(plots_dir, f"{scenario_name}_T{time_step_to_visualise}_Decisions.png")
     plt.savefig(save_path)
-    print(f"\nVisualization saved to: {save_path}")
+    print(f"\nvisualisation saved to: {save_path}")
     plt.show()
 
+# In Visualise_network.py
+
 if __name__ == "__main__":
-    # Test the visualistion function without results
-    # Import .inp file from modified nets
-    script = os.path.dirname(__file__)
-    inp_file = os.path.join(script, 'Modified_nets', 'anytown-3.inp')  # Replace with your .inp file
-    wn = wntr.network.WaterNetworkModel(inp_file)
-    visualise_demands(wn, "Anytown Network Demands", save_path=None, show=True)
+    script_dir = os.path.dirname(__file__) #
+    
+    # Define paths to the INP files
+    hanoi_inp_path = os.path.join(script_dir, 'Initial_networks', 'exeter', 'anytown-3.inp') #
+    anytown_inp_path = os.path.join(script_dir, 'Initial_networks', 'exeter', 'hanoi-3.inp') #
+
+    # Load the network models
+    wn_hanoi = wntr.network.WaterNetworkModel(hanoi_inp_path) #
+    wn_anytown = wntr.network.WaterNetworkModel(anytown_inp_path) #
+
+    # Run simulations to get results (for pressure visualisation)
+    print("Running simulation for Hanoi network...")
+    results_hanoi = run_epanet_simulation(wn_hanoi) #
+    print("Running simulation for Anytown network...")
+    results_anytown = run_epanet_simulation(wn_anytown) #
+
+    script = os.path.dirname(os.path.abspath(__file__)) #
+    save_hanoi = os.path.join(script, 'Plots', 'Hanoi_net_3d.png')
+    save_anytown = os.path.join(script, 'Plots', 'Anytown_net_3d.png')
+
+    # Create a figure with two 3D subplots
+    # fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 9), subplot_kw={'projection': '3d'})
+    # fig.suptitle('3D Network visualisations with Pressure', fontsize=16)
+
+    # visualise Hanoi network on the first subplot
+    if results_hanoi:
+        print("visualising Hanoi network in 3D...")
+        visualise_network(wn_hanoi, results_hanoi, "Hanoi Network (3D)", 
+                          save_path=save_hanoi, mode='3d', show=False)
+
+    # visualise Anytown network on the second subplot
+    if results_anytown:
+        print("visualising Anytown network in 3D...")
+        visualise_network(wn_anytown, results_anytown, "Anytown Network (3D)", 
+                          save_path=save_anytown, mode='3d', show=False)
+        
+    # plt.tight_layout(rect=[0, 0.05, 1, 0.95], pad = 3.0, w_pad = 4.0) # Adjust layout to make space for suptitle and colorbars
+    # # plt.savefig(os.path.join(script_dir, 'Plots', '3D_Network_visualisations.png'), dpi=150, bbox_inches='tight') #
+    # plt.show()
+

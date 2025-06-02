@@ -73,39 +73,39 @@ def calculate_reward(
     max_diameter = max([pipes[pipe]['diameter'] for pipe in pipes])
     next_largest = max([pipes[pipe]['diameter'] for pipe in pipes if pipes[pipe]['diameter'] < max_diameter])
 
-    # print(f"Max diameter: {max_diameter}, Next largest diameter: {next_largest}")
+    print(f"Max diameter: {max_diameter}, Next largest diameter: {next_largest}")
 
     # Extract pipe IDs from initial_pipes
-    # initial_pipe_ids = [pipe_data.name for pipe, pipe_data in initial_pipes]
-    # max_actions = [(pipe_id, max_diameter) for pipe_id in initial_pipe_ids]
+    initial_pipe_ids = [pipe_data.name for pipe, pipe_data in initial_pipes]
+    max_actions = [(pipe_id, max_diameter) for pipe_id in initial_pipe_ids]
 
     # Create a new list for corrected max actions
-    # corrected_max_actions = []
+    corrected_max_actions = []
     
-    # # Check if pipes already have the maximum diameter and adjust accordingly
-    # for i, (pipe_id, new_diameter) in enumerate(max_actions):
-    #     # Get the current diameter from original_pipe_diameters if available
-    #     if pipe_id in original_pipe_diameters:
-    #         current_diameter = original_pipe_diameters[pipe_id]
-    #     else:
-    #         # Otherwise get it from the current network
-    #         for pipe, pipe_data in initial_pipes:
-    #             if pipe_data.name == pipe_id:
-    #                 current_diameter = pipe_data.diameter
-    #                 break
+    # Check if pipes already have the maximum diameter and adjust accordingly
+    for i, (pipe_id, new_diameter) in enumerate(max_actions):
+        # Get the current diameter from original_pipe_diameters if available
+        if pipe_id in original_pipe_diameters:
+            current_diameter = original_pipe_diameters[pipe_id]
+        else:
+            # Otherwise get it from the current network
+            for pipe, pipe_data in initial_pipes:
+                if pipe_data.name == pipe_id:
+                    current_diameter = pipe_data.diameter
+                    break
         
-    #     # If the pipe already has the maximum diameter, use next largest instead
-    #     if current_diameter == max_diameter:
-    #         corrected_max_actions.append((pipe_id, next_largest))
-    #     else:
-    #         corrected_max_actions.append((pipe_id, max_diameter))
+        # If the pipe already has the maximum diameter, use next largest instead
+        if current_diameter == max_diameter:
+            corrected_max_actions.append((pipe_id, next_largest))
+        else:
+            corrected_max_actions.append((pipe_id, max_diameter))
     
-    # max_actions = corrected_max_actions
+    max_actions = corrected_max_actions
 
-    # print("-------------------------------------")
-    # print("Calculating cost given maximum actions...")
+    print("-------------------------------------")
+    print("Calculating cost given maximum actions...")
 
-    # max_cost = compute_total_cost(initial_pipes, max_actions, labour_cost, energy_cost, pipes, original_pipe_diameters)
+    max_cost = compute_total_cost(initial_pipes, max_actions, labour_cost, energy_cost, pipes, original_pipe_diameters)
 
     print("-------------------------------------")
     cost_ratio = max(1 - (cost / max_cost), 0) if max_cost > 0 else 0 # Where a cost of 1 is the best possible outcome
@@ -176,14 +176,14 @@ def reward_just_pd(
     demand_satisfaction_info = max(demand_satisfaction, 0)
 
     # --- MODIFIED REWARD CALCULATION ---
-    # The agent maximizes reward. To minimize pressure deficit, the reward should be -pressure_deficit.
+    # The agent maximizes reward. To minimise pressure deficit, the reward should be -pressure_deficit.
     # A smaller (closer to zero) pressure deficit results in a less negative (i.e., higher) reward.
     reward = -pressure_deficit
     # --- END OF MODIFIED REWARD CALCULATION ---
 
     # Modify the print statement to reflect the new reward focus
     print("-------------------------------------")
-    print(f"Simplified Reward (solely minimizing PD): {reward:.4f} (based on raw Pressure Deficit: {pressure_deficit:.4f})")
+    print(f"Simplified Reward (solely minimising PD): {reward:.4f} (based on raw Pressure Deficit: {pressure_deficit:.4f})")
     # You can still print other metrics if desired for debugging:
     # print(f"  (For info: Cost={cost:.2f}, Demand Satisfaction={demand_satisfaction_info:.4f})")
     print("------------------------------------")
@@ -191,6 +191,73 @@ def reward_just_pd(
     # The function signature requires returning all these values.
     # The agent will optimize based on the first 'reward' value.
     return reward, cost, pd_ratio_info, demand_satisfaction_info, disconnections, actions_causing_disconnections, downgraded_pipes
+
+# Add these new functions to your existing Reward.py file
+
+def reward_minimise_pd(performance_metrics: dict, max_pd: float, **kwargs) -> tuple:
+    """
+    CURRICULUM STAGE 1: Reward function focused solely on minimising pressure deficit.
+    The reward is the negative of the pressure deficit, directly incentivizing the agent
+    to reduce it towards zero.
+    """
+    pressure_deficit = performance_metrics.get('total_pressure_deficit', 0.0)
+    
+    # The reward is simply the negative pressure deficit. A higher reward means a lower deficit.
+    reward = -pressure_deficit
+    
+    # Return values for logging purposes, even if not used in reward calculation
+    cost = kwargs.get('cost', 0)
+    demand_satisfaction = performance_metrics.get('demand_satisfaction_ratio', 0)
+    pd_ratio = 1 - (pressure_deficit / max_pd) if max_pd > 0 else 0
+
+    return reward, cost, pd_ratio, demand_satisfaction
+
+def reward_pd_and_cost(performance_metrics: dict, cost: float, max_pd: float, max_cost: float, **kwargs) -> tuple:
+    """
+    CURRICULUM STAGE 2: Reward function that balances minimising pressure deficit and cost.
+    It uses normalized ratios to prevent one objective from dominating the other.
+    """
+    pressure_deficit = performance_metrics.get('total_pressure_deficit', 0.0)
+    
+    # Normalize pressure deficit and cost to be between 0 and 1 (where 1 is best)
+    pd_ratio = 1 - (pressure_deficit / max_pd) if max_pd > 0 else 0
+    cost_ratio = 1 - (cost / max_cost) if max_cost > 0 else 0
+    
+    # Weights for combining the objectives. Pressure deficit is weighted higher
+    # to ensure the agent doesn't forget the lessons from Stage 1.
+    w_pd = 0.7
+    w_cost = 0.3
+    
+    reward = (w_pd * pd_ratio) + (w_cost * cost_ratio)
+
+    # Return values for logging
+    demand_satisfaction = performance_metrics.get('demand_satisfaction_ratio', 0)
+
+    return reward, cost, pd_ratio, demand_satisfaction
+
+def reward_full_objective(performance_metrics: dict, cost: float, max_pd: float, max_cost: float, **kwargs) -> tuple:
+    """
+    CURRICULUM STAGE 3: The full, multi-objective reward function from your original code.
+    This balances cost, pressure deficit, and demand satisfaction.
+    """
+    pressure_deficit = performance_metrics.get('total_pressure_deficit', 0.0)
+    demand_satisfaction = performance_metrics.get('demand_satisfaction_ratio', 0)
+    
+    # Normalize metrics
+    pd_ratio = 1 - (pressure_deficit / max_pd) if max_pd > 0 else 0
+    cost_ratio = 1 - (cost / max_cost) if max_cost > 0 else 0
+
+    # These weights are from your original `calculate_reward` function.
+    reward_weights = [0.3, 0.4, 0.2] # Cost, PD, Demand
+    
+    reward = (reward_weights[0] * cost_ratio) + \
+             (reward_weights[1] * pd_ratio) + \
+             (reward_weights[2] * demand_satisfaction)
+
+    return reward, cost, pd_ratio, demand_satisfaction
+
+# Note: The original `calculate_reward` can be kept for comparison or as the final stage reward.
+# The disconnection penalty is best handled within the environment's step function, as it's a critical failure state.
 
 
 def compute_total_cost(initial_pipes, actions, labour_cost, energy_cost, pipes, original_pipe_diameters=None):

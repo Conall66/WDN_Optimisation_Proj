@@ -15,7 +15,7 @@ from typing import Dict, List, Tuple, Optional
 import networkx as nx
 
 from Hydraulic_Model import run_epanet_simulation, evaluate_network_performance
-from Reward import calculate_reward, reward_just_pd, compute_total_cost
+from Reward import calculate_reward, reward_just_pd, compute_total_cost, reward_minimise_pd, reward_pd_and_cost, reward_full_objective
 
 class WNTRGymEnv(gym.Env):
     metadata = {'render_modes': ['human']}
@@ -44,6 +44,7 @@ class WNTRGymEnv(gym.Env):
         self.max_pipes = max_pipes
         self.current_max_pd = current_max_pd
         self.current_max_cost = current_max_cost
+        # self.reward_mode = reward_mode
         
         self.current_scenario = None
         self.current_time_step = 0
@@ -55,6 +56,7 @@ class WNTRGymEnv(gym.Env):
         self.node_pressures = {}
         self.actions_this_timestep = []
         self.original_diameters_this_timestep = {}
+        self.chosen_diameters_from_previous_step = None
         
         # --- Action Space (Unchanged) ---
         self.action_space = spaces.Discrete(len(self.pipe_diameter_options) + 1)
@@ -175,8 +177,10 @@ class WNTRGymEnv(gym.Env):
         
         self.current_time_step = 0
         self.current_pipe_index = 0
-        self.actions_this_timestep = []
         
+        self.actions_this_timestep = []
+        self.chosen_diameters_from_previous_step = None
+        self.chosen_roughness_from_previous_step = None
         self._load_network_for_timestep()
         
         obs = self.get_network_features()
@@ -187,9 +191,32 @@ class WNTRGymEnv(gym.Env):
     def _load_network_for_timestep(self):
         """Helper function to load a network and set its initial state."""
         network_path = self.network_states[self.current_time_step]
-        self.current_network = wntr.network.WaterNetworkModel(network_path)
+        self.current_network = wntr.network.WaterNetworkModel(network_path) # Loads the next .inp file
         self.pipe_names = self.current_network.pipe_name_list
-        self.node_names = self.current_network.junction_name_list
+        
+        # ADD THIS BLOCK to apply diameters from the previous step
+        if self.chosen_diameters_from_previous_step:
+            # print(f"INFO: Applying {len(self.chosen_diameters_from_previous_step)} chosen diameters from previous step to new network.")
+            for pipe_name, diameter in self.chosen_diameters_from_previous_step.items():
+                # Only update the pipe if it exists in the newly loaded network
+                if pipe_name in self.current_network.pipe_name_list:
+                    pipe = self.current_network.get_link(pipe_name)
+                    pipe.diameter = diameter
+
+        if self.chosen_roughness_from_previous_step:
+            # print(f"INFO: Applying {len(self.chosen_roughness_from_previous_step)} chosen roughness values from previous step.")
+            for pipe_name, roughness_val in self.chosen_roughness_from_previous_step.items():
+                if pipe_name in self.current_network.pipe_name_list: #
+                    pipe = self.current_network.get_link(pipe_name) #
+                    pipe.roughness = roughness_val 
+
+        if self.current_time_step > 0:
+            print(f"INFO: Time step {self.current_time_step}. Decreasing H-W coeff for all pipes by 0.025.")
+            for pipe_name in self.current_network.pipe_name_list: #
+                pipe = self.current_network.get_link(pipe_name) #
+                original_roughness = pipe.roughness
+                pipe.roughness -= 0.025
+                # print(f"  Pipe {pipe_name}: roughness {original_roughness:.4f} -> {pipe.roughness:.4f}")
 
         self.original_diameters_this_timestep = {p: self.current_network.get_link(p).diameter for p in self.pipe_names}
 
@@ -258,6 +285,7 @@ class WNTRGymEnv(gym.Env):
             new_diameter = self.pipe_diameter_options[action - 1]
             if new_diameter > old_diameter:
                 self.current_network.get_link(pipe_name).diameter = new_diameter
+                self.current_network.get_link(pipe_name).roughness = 150.0 # Reset H-W
                 self.actions_this_timestep.append((pipe_name, new_diameter))
                 action_is_valid_upgrade = True
 
@@ -281,33 +309,33 @@ class WNTRGymEnv(gym.Env):
             
             if results:
 
-                # reward_tuple = calculate_reward(
-                #     self.current_network, 
-                #     self.original_diameters_this_timestep, 
-                #     self.actions_this_timestep, 
-                #     self.pipes, 
-                #     metrics, 
-                #     self.labour_cost, 
-                #     False, 
-                #     False, 
-                #     [],
-                #     max_pd=self.current_max_pd,
-                #     max_cost=self.current_max_cost # Pass max_cost
-                # )
-
-                reward_tuple = reward_just_pd(
-                    self.current_network,
-                    self.original_diameters_this_timestep,
-                    self.actions_this_timestep,
-                    self.pipes,
-                    metrics, # performance_metrics
-                    self.labour_cost,
-                    False, # downgraded_pipes (assuming agent won't/can't downgrade)
-                    False, # disconnections (assuming not modeled or handled separately)
-                    [],    # actions_causing_disconnections
-                    max_pd=self.current_max_pd, # May not be used by reward_just_pd
-                    max_cost=self.current_max_cost # May not be used by reward_just_pd
+                reward_tuple = calculate_reward(
+                    self.current_network, 
+                    self.original_diameters_this_timestep, 
+                    self.actions_this_timestep, 
+                    self.pipes, 
+                    metrics, 
+                    self.labour_cost, 
+                    False, 
+                    False, 
+                    [],
+                    max_pd=self.current_max_pd,
+                    max_cost=self.current_max_cost # Pass max_cost
                 )
+
+                # reward_tuple = reward_just_pd(
+                #     self.current_network,
+                #     self.original_diameters_this_timestep,
+                #     self.actions_this_timestep,
+                #     self.pipes,
+                #     metrics, # performance_metrics
+                #     self.labour_cost,
+                #     False, # downgraded_pipes (assuming agent won't/can't downgrade)
+                #     False, # disconnections (assuming not modeled or handled separately)
+                #     [],    # actions_causing_disconnections
+                #     max_pd=self.current_max_pd, # May not be used by reward_just_pd
+                #     max_cost=self.current_max_cost # May not be used by reward_just_pd
+                # )
 
                 reward = reward_tuple[0]
                 
@@ -326,6 +354,12 @@ class WNTRGymEnv(gym.Env):
                 info = {} # Return empty info on failure
             
             # --- Reset for the next major timestep in the scenario ---
+
+            self.chosen_diameters_from_previous_step = {
+                p_name: self.current_network.get_link(p_name).diameter 
+                for p_name in self.pipe_names
+            }
+
             self.current_time_step += 1
             self.current_pipe_index = 0
             self.actions_this_timestep = []

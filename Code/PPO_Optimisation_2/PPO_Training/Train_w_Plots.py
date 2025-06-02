@@ -207,6 +207,7 @@ def generate_and_save_plots(model_path, log_path, drl_results, random_results, p
 
     # Plot 3: Action Analysis (this part is unchanged)
     fig_actions = plot_action_analysis(log_path)
+
     if fig_actions:
         fig_actions.savefig(os.path.join(action_save_path, f"action_analysis_{model_timestamp}.png"))
         plt.close(fig_actions)
@@ -219,14 +220,21 @@ def generate_and_save_plots(model_path, log_path, drl_results, random_results, p
         plt.close(fig_scenarios)
         print("  - Saved scenario reward comparison plot.")
         
-    # Plot 5: Agent Upgrade Frequency per Time Step
+        # Plot 5: Agent Upgrade Frequency per Time Step
     print("  - Generating upgrade frequency plot...")
     fig_actions = plot_upgrades_per_timestep(
         model_path=model_path,
         pipes=pipes,
         scenarios=scenarios,
-        num_episodes=24 # A good number for averaging across all 12 scenarios twice
+        num_episodes=24 
     )
+
+    if fig_actions:
+        # Give this plot a unique filename to avoid overwriting the other action analysis plot
+        upgrades_filename = f"upgrades_per_timestep_{model_timestamp}.png"
+        fig_actions.savefig(os.path.join(action_save_path, upgrades_filename))
+        plt.close(fig_actions)
+        print("  - Saved upgrade frequency plot.")
 
     if fig_actions:
         fig_actions.savefig(os.path.join(action_save_path, f"action_analysis_{model_timestamp}.png"))
@@ -388,7 +396,7 @@ def train_just_anytown():
     # Applying a low discount factor so the agent starts to prioritise short term rewwards more greatly
 
     num_cpu = mp.cpu_count()
-    total_timesteps = 100000
+    total_timesteps = 200000
     all_scenarios = [
         'anytown_densifying_1', 'anytown_densifying_2', 'anytown_densifying_3', 'anytown_sprawling_1', 'anytown_sprawling_2', 'anytown_sprawling_3',
         'hanoi_densifying_1', 'hanoi_densifying_2', 'hanoi_densifying_3', 'hanoi_sprawling_1', 'hanoi_sprawling_2', 'hanoi_sprawling_3'
@@ -439,9 +447,105 @@ def train_just_anytown():
     print("\n" + "="*60)
     print("### TRAINING COMPLETE ###")
     print("="*60)
+
+def inspect_agent_actions(model_path: str, pipes: dict, scenarios: list, target_scenario_name: str):
+    """
+    Loads a trained agent and runs it on a single scenario to inspect its actions step-by-step.
+
+    Args:
+        model_path (str): Path to the trained agent model file (e.g., "agents/trained_gnn_ppo_wn_...").
+        pipes (dict): The pipes configuration dictionary.
+        scenarios (list): The list of all possible scenarios the environment can use.
+        target_scenario_name (str): The specific scenario to run for inspection.
+    """
+    print(f"\n--- Inspecting Agent Actions ---")
+    print(f"Model: {os.path.basename(model_path)}")
+    print(f"Scenario: {target_scenario_name}\n")
+
+    # 1. Setup Environment and Agent
+    # A DummyVecEnv is needed for the agent's constructor, but we'll interact with the base env for inspection.
+    eval_env = WNTRGymEnv(pipes, scenarios)
+    
+    # The agent requires a vectorized environment for initialization
+    temp_env = DummyVecEnv([lambda: WNTRGymEnv(pipes, scenarios)])
+    agent = GraphPPOAgent(temp_env, pipes_config=pipes) # Pass pipes_config to the agent
+    agent.load(model_path)
+
+    # 2. Reset the environment to the target scenario
+    obs, info = eval_env.reset(scenario_name=target_scenario_name)
+    
+    done = False
+    major_time_step = 0
+    
+    while not done:
+        # Get information about the current pipe BEFORE the agent takes an action
+        current_pipe_index = eval_env.current_pipe_index # The index of the pipe being decided on
+        pipe_name = eval_env.pipe_names[current_pipe_index] # The name of the pipe
+        original_diameter = eval_env.original_diameters_this_timestep[pipe_name] # The pipe's starting diameter
+
+        # Reshape the single observation to have a batch dimension for the agent
+        batched_obs = {key: np.expand_dims(value, axis=0) for key, value in obs.items()}
+        
+        # 3. Get the agent's action
+        action, _ = agent.predict(batched_obs, deterministic=True)
+        
+        # The action is an array, so get the integer value
+        action_int = action.item()
+
+        # 4. Translate the action into a human-readable description
+        if action_int == 0:
+            action_desc = "Do Nothing"
+        else:
+            # Action `i` corresponds to the `i-1` index in the diameter options list
+            new_diameter = eval_env.pipe_diameter_options[action_int - 1]
+            if new_diameter > original_diameter:
+                action_desc = f"Upgrade to {new_diameter}m"
+            else:
+                # This case should not happen if the action mask is working correctly
+                action_desc = f"Invalid Action: Choose diameter {new_diameter}m (not an upgrade)"
+
+
+        # 5. Print the agent's decision for the current pipe
+        print(f"Major Time Step {major_time_step} | Pipe Decision {current_pipe_index + 1}/{len(eval_env.pipe_names)}:")
+        print(f"  - Pipe Under Consideration: '{pipe_name}' (Original Diameter: {original_diameter:.4f}m)")
+        print(f"  - Agent's Suggested Action: {action_int} => {action_desc}")
+
+        # Step the environment with the chosen action
+        obs, reward, terminated, truncated, info = eval_env.step(action_int)
+        done = terminated or truncated
+
+        # If the pipe index has reset to 0, it means we've moved to the next major time step
+        if eval_env.current_pipe_index == 0 and not done:
+            major_time_step += 1
+            print(f"\n--- Network State Advanced (Reward for previous step: {reward:.4f}) ---\n")
+
+    eval_env.close()
+    print("\n--- Scenario Inspection Complete ---")
     
 if __name__ == "__main__":
     # --- Overall Configuration ---
     
     train_just_anytown()
     # train_multiple()
+
+    # pipes_config = {
+    #     'Pipe_1': {'diameter': 0.3048, 'unit_cost': 36.58},
+    #     'Pipe_2': {'diameter': 0.4064, 'unit_cost': 56.32},
+    #     'Pipe_3': {'diameter': 0.5080, 'unit_cost': 78.71},
+    #     'Pipe_4': {'diameter': 0.6096, 'unit_cost': 103.47},
+    #     'Pipe_5': {'diameter': 0.7620, 'unit_cost': 144.60},
+    #     'Pipe_6': {'diameter': 1.0160, 'unit_cost': 222.62}
+    # }
+
+    # # Anytown scenarios
+    # scenarios_list = [
+    #     'anytown_densifying_1', 'anytown_densifying_2', 'anytown_densifying_3',
+    #     'anytown_sprawling_1', 'anytown_sprawling_2', 'anytown_sprawling_3'
+    # ]
+
+    # saved_model_path = "agents/agent1_anytown_only_20250602_170720" # Example path
+    
+    # if os.path.exists(saved_model_path + ".zip"):
+    #      inspect_agent_actions(saved_model_path, pipes_config, scenarios_list, target_scenario_name='anytown_sprawling_2')
+    # else:
+    #      print(f"Model path not found: {saved_model_path}.zip")

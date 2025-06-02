@@ -467,3 +467,9 @@ if __name__ == "__main__":
     
     print("\nAll comparison tasks complete!")
     plt.show() # Show all plots at the very end if desired, or rely on saved files.
+
+if __name__ == "__main__":
+
+    # Test the GA scipt on a single scenario
+
+    test_scenario = 'anytown_sprawling_3' 
