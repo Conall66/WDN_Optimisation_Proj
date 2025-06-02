@@ -58,8 +58,8 @@ def train_agent_with_monitoring(net_type = 'both', time_steps = 50000):
         return env
 
     num_cpu = mp.cpu_count()
-    # vec_env = SubprocVecEnv([make_env for _ in range(num_cpu)]) # This line parallelises code
-    vec_env = DummyVecEnv([make_env])
+    vec_env = SubprocVecEnv([make_env for _ in range(num_cpu)]) # This line parallelises code
+    # vec_env = DummyVecEnv([make_env])
     
     ppo_config = {
         "learning_rate": 3e-4, "n_steps": 2048, "batch_size": 64, "n_epochs": 10,

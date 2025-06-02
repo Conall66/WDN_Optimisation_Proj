@@ -369,6 +369,7 @@ class GraphPPOAgent:
         # self.graph_converter = WaterNetworkGraphConverter(pipes_config) # This is part of GNNFeatureExtractor now
 
         device = "cpu" # Force CPU for my training
+        # device = "cuda" if torch.cuda.is_available() else "cpu"  # Use GPU if available, otherwise CPU
         print(f"Using device: {device}")
         
         default_ppo_kwargs = {
