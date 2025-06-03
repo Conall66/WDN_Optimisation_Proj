@@ -16,6 +16,7 @@ import wntr
 import time
 import wntr.metrics.economic as economics
 import tempfile
+import shutil
 
 # convert networkx graph to .inp file
 
@@ -134,87 +135,76 @@ def convert_wntr_to_nx(wn, results=None):
     
     return G
 
-def run_epanet_simulation(wn, static=False):  # Changed default to False
+def run_epanet_simulation(wn, static=False):
     """
-    Run EPANET simulation on the water network model.
-
-    Parameters:
-    wn (wntr.network.WaterNetworkModel): The water network model.
-    static (bool): If True, run a steady state simulation. If False, run a dynamic simulation.
-
-    Returns:
-    wntr.sim.SimulationResults: The EPANET simulation results.
+    Run EPANET simulation on the water network model in a process-safe temporary directory
+    with a robust cleanup mechanism to avoid file lock errors in parallel execution.
     """
-
-    print("Running EPANET simulation...")
-
-
-    # Initialise simulation parameters
+    # --- Simulation options setup (no changes here) ---
     if static:
-        wn.options.time.duration = 0  # Steady state simulation
+        wn.options.time.duration = 0
     else:
-        wn.options.time.duration = 24 * 3600  # 24 hours - given CMH
+        wn.options.time.duration = 24 * 3600
 
+    wn.options.time.hydraulic_timestep = 3600
+    wn.options.time.pattern_timestep = 3600
+    wn.options.time.report_timestep = 3600
     wn.options.hydraulic.inpfile_units = 'CMH'
-        
-    wn.options.time.hydraulic_timestep = 3600  # 1 hour in seconds
-    wn.options.time.pattern_timestep = 3600    # 1 hour in seconds
-    wn.options.time.report_timestep = 3600     # 1 hour in seconds
-
-    # Set hydraulic options for better convergence
     wn.options.hydraulic.accuracy = 0.01
-    wn.options.hydraulic.trials = 100 # Default is 40, increased to reduce possibility of failure to converge (may slow training)
-    wn.options.hydraulic.headloss = 'H-W'  # Hazen-Williams
-    wn.options.hydraulic.demand_model = 'DDA'  # Demand-driven analysis is more stable
-    wn.options.hydraulic.demand_multiplier = 1.0  # No multiplier for demand
-    
-    # Ensure energy calculations are enabled
+    wn.options.hydraulic.trials = 100
+    wn.options.hydraulic.headloss = 'H-W'
+    wn.options.hydraulic.demand_model = 'DDA'
     wn.options.energy.global_efficiency = 100.0
     wn.options.energy.global_price = 0.26
+
+    # --- MODIFICATION FOR ROBUST PARALLEL EXECUTION ---
+
+    # 1. Store the original working directory.
+    original_cwd = os.getcwd()
     
-    # Debug pump information
-    # print(f"Network has {len(wn.pump_name_list)} pumps: {wn.pump_name_list}")
+    # 2. Manually create a temporary directory instead of using a 'with' block.
+    # This gives us full control over the cleanup process.
+    temp_dir_path = tempfile.mkdtemp(prefix="wntr_sim_")
     
-    start_time = time.time()
-
-    # Create a simulator object
-    # sim = wntr.sim.EpanetSimulator(wn)
-    # results = sim.run_sim()
-
-    original_cwd = os.getcwd() # Store the original CWD
-    results = None # Initialize results to None
-
-    # Create a unique temporary directory for this simulation run
-    with tempfile.TemporaryDirectory(prefix="wntr_sim_") as temp_dir_path:
-        try:
-            os.chdir(temp_dir_path) # Change CWD to the unique temp directory
-            # Now, when EpanetSimulator runs, its default temp files (like "temp.inp")
-            # will be created in this isolated directory.
-            
-            # print(f"Process {os.getpid()} using temp dir: {temp_dir_path}") # For debugging
-            sim = wntr.sim.EpanetSimulator(wn)
-            results = sim.run_sim()
-            time.sleep(0.1)  # Small delay to ensure all files are written before exiting context
-            
-        except Exception as e:
-            # Handle simulation error if needed, or let it propagate
-            print(f"Error during EPANET simulation in temp dir {temp_dir_path}: {e}")
-            # results will remain None or partial
-            raise # It's often better to re-raise to be caught by the environment's handler
-        finally:
-            os.chdir(original_cwd) # CRITICAL: Always change CWD back
-
-    end_time = time.time()
-    run_time = end_time - start_time
-    # print(f"Hydraulic simulation completed in {run_time:.4f} seconds")
+    results = None
     
-    # Debug energy results
-    """Energy data is never added to the results"""
-    # if 'energy' in results.link:
-    #     print(f"Energy data available for links: {results.link['energy'].columns}")
-    # else:
-    #     print("No energy data in results - check pump definitions and patterns")
+    try:
+        # 3. Change into the isolated directory to run the simulation.
+        os.chdir(temp_dir_path)
+        
+        sim = wntr.sim.EpanetSimulator(wn)
+        results = sim.run_sim()
 
+    except Exception as e:
+        print(f"ERROR: Exception during EPANET simulation in temp dir {temp_dir_path}: {e}")
+        # The finally block will still run to perform cleanup.
+        raise  # Re-raise the exception so the calling environment knows about the failure.
+
+    finally:
+        # 4. CRITICAL: Always change the CWD back to the original path first.
+        os.chdir(original_cwd)
+        
+        # 5. Implement a robust cleanup with a retry loop.
+        for i in range(5):  # Try to clean up 5 times
+            try:
+                shutil.rmtree(temp_dir_path)
+                # If deletion is successful, break the loop
+                break
+            except PermissionError:
+                # This catches the exact [WinError 32] you are seeing.
+                # print(f"Cleanup attempt {i+1} failed for {temp_dir_path}. Retrying in 0.1s...")
+                time.sleep(0.1)
+            except Exception as e:
+                print(f"Warning: An unexpected error occurred during cleanup of {temp_dir_path}: {e}")
+                break
+        else:
+            # This 'else' block runs only if the 'for' loop completes without a 'break'.
+            # This means all cleanup attempts failed.
+            print(f"Warning: Could not clean up temporary directory {temp_dir_path}. It may need to be deleted manually.")
+
+    # --- END OF MODIFICATION ---
+    
+    # The rest of the function remains the same.
     return results
 
 def evaluate_network_performance(wn, results, final_time=3600):

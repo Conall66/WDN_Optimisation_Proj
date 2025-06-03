@@ -395,7 +395,10 @@ def train_just_anytown():
 
     # Applying a low discount factor so the agent starts to prioritise short term rewwards more greatly
 
-    num_cpu = mp.cpu_count()
+    num_cpu = int(mp.cpu_count() / 2) # Only use half cores to avoid overloading simulation calls
+
+    # print(f"Number of CPU cores available: {num_cpu}")
+
     total_timesteps = 200000
     all_scenarios = [
         'anytown_densifying_1', 'anytown_densifying_2', 'anytown_densifying_3', 'anytown_sprawling_1', 'anytown_sprawling_2', 'anytown_sprawling_3',
@@ -413,8 +416,8 @@ def train_just_anytown():
 
     start_time = time.time()
 
-    # vec_env_anytown = SubprocVecEnv([lambda: WNTRGymEnv(pipes, anytown_scenarios) for _ in range(num_cpu)])
-    vec_env_anytown = DummyVecEnv([lambda: WNTRGymEnv(pipes, anytown_scenarios)])
+    vec_env_anytown = SubprocVecEnv([lambda: WNTRGymEnv(pipes, anytown_scenarios) for _ in range(num_cpu)])
+    # vec_env_anytown = DummyVecEnv([lambda: WNTRGymEnv(pipes, anytown_scenarios)])
     agent1 = GraphPPOAgent(vec_env_anytown, pipes, **ppo_config)
     
     cb1 = PlottingCallback()

@@ -29,7 +29,8 @@ class WNTRGymEnv(gym.Env):
             max_nodes: int = 150,
             max_pipes: int = 200, # These parameters determine rollout buffer size
             current_max_pd = 0.0,
-            current_max_cost = 0.0
+            current_max_cost = 0.0,
+            reward_mode: str = 'full_objective'  # Options: 'pd_only', 'cost_only', 'pd_and_cost', 'full_objective'
             ):
         
         super(WNTRGymEnv, self).__init__()
@@ -44,7 +45,7 @@ class WNTRGymEnv(gym.Env):
         self.max_pipes = max_pipes
         self.current_max_pd = current_max_pd
         self.current_max_cost = current_max_cost
-        # self.reward_mode = reward_mode
+        self.reward_mode = reward_mode
         
         self.current_scenario = None
         self.current_time_step = 0
@@ -309,49 +310,59 @@ class WNTRGymEnv(gym.Env):
             
             if results:
 
-                reward_tuple = calculate_reward(
-                    self.current_network, 
-                    self.original_diameters_this_timestep, 
+                # First, compute the total cost of interventions.
+                # This is needed by most reward functions.
+                cost_of_intervention = compute_total_cost(
+                    list(self.current_network.pipes()), 
                     self.actions_this_timestep, 
-                    self.pipes, 
-                    metrics, 
                     self.labour_cost, 
-                    False, 
-                    False, 
-                    [],
-                    max_pd=self.current_max_pd,
-                    max_cost=self.current_max_cost # Pass max_cost
+                    metrics.get('total_pump_cost', 0),
+                    self.pipes,
+                    self.original_diameters_this_timestep
                 )
 
-                # reward_tuple = reward_just_pd(
-                #     self.current_network,
-                #     self.original_diameters_this_timestep,
-                #     self.actions_this_timestep,
-                #     self.pipes,
-                #     metrics, # performance_metrics
-                #     self.labour_cost,
-                #     False, # downgraded_pipes (assuming agent won't/can't downgrade)
-                #     False, # disconnections (assuming not modeled or handled separately)
-                #     [],    # actions_causing_disconnections
-                #     max_pd=self.current_max_pd, # May not be used by reward_just_pd
-                #     max_cost=self.current_max_cost # May not be used by reward_just_pd
-                # )
-
-                reward = reward_tuple[0]
-                
-                # This is the data your plotting callback will log.
-                info = {
-                    'reward': reward,
-                    'cost_of_intervention': reward_tuple[1],
-                    'pressure_deficit': reward_tuple[2],
-                    'demand_satisfaction': reward_tuple[3],
-                    'pipe_changes': len(self.actions_this_timestep),
-                    'upgraded_pipes': len(self.actions_this_timestep),
+                # A dictionary of parameters to pass to the reward functions.
+                # This makes it easy to add new reward functions without changing the function call.
+                reward_params = {
+                    'performance_metrics': metrics,
+                    'cost': cost_of_intervention,
+                    'max_pd': self.current_max_pd,
+                    'max_cost': self.current_max_cost,
+                    # Add any other parameters your reward functions might need
                 }
 
-            else: # Main simulation failed
-                reward = 0.0 # Keep reward in normal value range
-                info = {} # Return empty info on failure
+                # Select the reward function based on the mode set during initialization.
+                if self.reward_mode == 'minimize_pd':
+                    reward_tuple = reward_minimise_pd(**reward_params)
+                elif self.reward_mode == 'pd_and_cost':
+                    reward_tuple = reward_pd_and_cost(**reward_params)
+                elif self.reward_mode == 'full_objective':
+                    # This uses the new "full_objective" function, which is cleaner.
+                    reward_tuple = reward_full_objective(**reward_params)
+                else: # Fallback to the original complex function if needed
+                    reward_tuple = calculate_reward(
+                        self.current_network, self.original_diameters_this_timestep, self.actions_this_timestep,
+                        self.pipes, metrics, self.labour_cost, False, False, [],
+                        max_pd=self.current_max_pd, max_cost=self.current_max_cost
+                    )
+                
+                reward, cost, pd_metric, demand_metric = reward_tuple
+                
+                info = {
+                    'reward': reward,
+                    'cost_of_intervention': cost,
+                    'pressure_deficit_ratio': pd_metric, # Log the normalized ratio
+                    'pressure_deficit_raw': metrics.get('total_pressure_deficit', 0.0), # Also log raw value
+                    'demand_satisfaction': demand_metric,
+                    'pipe_changes': len(self.actions_this_timestep),
+                }
+                # --- END OF MODIFIED LOGIC ---
+
+            else: # Simulation failed
+                # On critical failure, give a large negative reward and terminate.
+                reward = -500.0 # Large, consistent penalty for instability
+                terminated = True
+                info = {'error': 'Simulation failed'}
             
             # --- Reset for the next major timestep in the scenario ---
 
