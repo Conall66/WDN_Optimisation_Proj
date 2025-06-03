@@ -13,6 +13,7 @@ from matplotlib.cm import ScalarMappable
 import wntr
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.lines import Line2D
+from natsort import natsorted
 
 from PPO_Environment import WNTRGymEnv
 from Actor_Critic_Nets2 import GraphPPOAgent
@@ -488,14 +489,375 @@ def visualise_scenario(model_path: str, scenario_name: str, time_step_to_visuali
     print(f"\nvisualisation saved to: {save_path}")
     plt.show()
 
-# In Visualise_network.py
+# Add this new function to your Visualise_network.py file
+
+def visualise_pipe_diameters(wn, title, save_path=None, mode='2d', show=False, ax=None):
+    """
+    Visualise the water distribution network with pipe diameters color-coded and width-scaled.
+
+    Parameters:
+    wn (wntr.network.WaterNetworkModel): The water network model.
+    title (str): Title of the plot.
+    save_path (str, optional): Path to save the visualisation. Defaults to None.
+    mode (str, optional): Visualisation mode, either '2d' or '3d'. Defaults to '2d'.
+    show (bool, optional): Whether to display the plot. Defaults to False.
+    ax (matplotlib.axes.Axes, optional): The subplot axis to draw on. If None, a new figure is created.
+    """
+    if mode.lower() not in ['2d', '3d']:
+        raise ValueError("Mode must be either '2d' or '3d'")
+    mode = mode.lower()
+
+    if ax is None:
+        figure = plt.figure(figsize=(12, 10)) # Adjusted size for better legend/colorbar spacing
+        if mode == '3d':
+            ax = figure.add_subplot(111, projection='3d')
+        else:
+            ax = figure.add_subplot(111)
+    else:
+        figure = ax.get_figure()
+
+    ax.set_title(title, fontsize=16)
+    ax.set_xlabel('X Coordinate')
+    ax.set_ylabel('Y Coordinate')
+    if mode == '3d':
+        ax.set_zlabel('Elevation (m)')
+
+    pos = wn.query_node_attribute('coordinates')
+
+    # --- Node Plotting (Simplified - focus is on pipes) ---
+    node_markers = {
+        'reservoir': 'o', 'tank': '^', 'junction': 's',
+        'valve': 'D', 'pump': 'X'
+    }
+    node_colors_standard = { # Standard colors for nodes when not showing pressure
+        'reservoir': 'blue', 'tank': 'green', 'junction': 'gray',
+        'valve': 'purple', 'pump': 'red'
+    }
+    legend_handles = []
+    legend_labels = []
+
+    for node_type_key, marker_symbol in node_markers.items():
+        node_list_attr = getattr(wn, f"{node_type_key}_name_list", [])
+        # Only plot nodes that have coordinates
+        nodes_to_plot = [n for n in node_list_attr if n in pos]
+        if not nodes_to_plot:
+            continue
+
+        # Get coordinates and elevations for all nodes of this type at once
+        x_coords = [pos[n][0] for n in nodes_to_plot]
+        y_coords = [pos[n][1] for n in nodes_to_plot]
+        
+        color_val = node_colors_standard.get(node_type_key, 'black') # Default color
+
+        if mode == '3d':
+            z_coords = [get_node_elevation(wn, n) for n in nodes_to_plot]
+            scatter_obj = ax.scatter(x_coords, y_coords, z_coords,
+                                     marker=marker_symbol, color=color_val, s=50, alpha=0.7, label=node_type_key.capitalize())
+        else:
+            scatter_obj = ax.scatter(x_coords, y_coords,
+                                     marker=marker_symbol, color=color_val, s=50, alpha=0.7, label=node_type_key.capitalize())
+        
+        if node_type_key.capitalize() not in legend_labels:
+            # For legend, create a dummy scatter if using ax.legend later with handles/labels from loop
+            # Or, rely on the label in ax.scatter and just call ax.legend() once
+            pass # Legend will be handled by ax.legend() if labels are set in scatter
+
+    # --- Pipe Diameter Visualisation ---
+    pipe_name_list_val = wn.pipe_name_list
+    if not pipe_name_list_val:
+        print("No pipes in the network to visualize.")
+        return figure
+
+    pipe_diameters_map = {p_name: wn.get_link(p_name).diameter for p_name in pipe_name_list_val}
+    all_diameters = list(pipe_diameters_map.values())
+    
+    if not all_diameters:
+        min_diam_val = 0
+        max_diam_val = 1 # Avoid division by zero if all_diameters is empty
+    else:
+        min_diam_val = min(all_diameters)
+        max_diam_val = max(all_diameters)
+
+    diam_range_val = max_diam_val - min_diam_val
+    if diam_range_val == 0: # Handle case where all pipes have the same diameter
+        diam_range_val = 1 
+
+    # Setup colormap for pipe diameters
+    # Using 'cividis' as it's perceptually uniform and good for colorblindness
+    pipe_diam_norm = Normalize(vmin=min_diam_val, vmax=max_diam_val)
+    pipe_diam_cmap = plt.get_cmap('viridis') 
+
+    for p_name_val in pipe_name_list_val:
+        pipe_obj_val = wn.get_link(p_name_val)
+        start_node_name_val, end_node_name_val = pipe_obj_val.start_node_name, pipe_obj_val.end_node_name
+        
+        if start_node_name_val in pos and end_node_name_val in pos:
+            start_pos_val, end_pos_val = pos[start_node_name_val], pos[end_node_name_val]
+            start_elev_val, end_elev_val = get_node_elevation(wn, start_node_name_val), get_node_elevation(wn, end_node_name_val)
+            
+            diameter_val = pipe_diameters_map[p_name_val]
+            
+            # Scale line width by diameter (adjust multiplier for desired effect)
+            width_val = 0.5 + 4 * ((diameter_val - min_diam_val) / diam_range_val)
+            
+            # Get color based on diameter
+            pipe_color = pipe_diam_cmap(pipe_diam_norm(diameter_val))
+            
+            if mode == '3d':
+                ax.plot([start_pos_val[0], end_pos_val[0]], [start_pos_val[1], end_pos_val[1]], [start_elev_val, end_elev_val],
+                        color=pipe_color, linewidth=width_val, alpha=0.8, zorder=1)
+            else:
+                ax.plot([start_pos_val[0], end_pos_val[0]], [start_pos_val[1], end_pos_val[1]],
+                        color=pipe_color, linewidth=width_val, alpha=0.8, zorder=1)
+
+    # Add colorbar for pipe diameters
+    sm_diam = ScalarMappable(cmap=pipe_diam_cmap, norm=pipe_diam_norm)
+    sm_diam.set_array([]) # Important for the colorbar to show up
+    cbar_diam = figure.colorbar(sm_diam, ax=ax, shrink=0.6, aspect=20, label='Pipe Diameter (m)', orientation='vertical')
+    # Add ticks for min, max, and mid if possible
+    cbar_diam_ticks = [min_diam_val, (min_diam_val + max_diam_val) / 2, max_diam_val]
+    if len(set(cbar_diam_ticks)) < 2 : # if min and max are too close or same
+        cbar_diam_ticks = np.unique([min_diam_val, max_diam_val])
+    cbar_diam.set_ticks(cbar_diam_ticks)
+    cbar_diam.ax.tick_params(labelsize=8)
+
+
+    # --- Pump Plotting (as before, simple lines) ---
+    pump_line_obj = None
+    for pump_name_val in wn.pump_name_list:
+        pump_obj = wn.get_link(pump_name_val)
+        start_node_name_val, end_node_name_val = pump_obj.start_node_name, pump_obj.end_node_name
+        if start_node_name_val in pos and end_node_name_val in pos:
+            start_pos_val, end_pos_val = pos[start_node_name_val], pos[end_node_name_val]
+            start_elev_val, end_elev_val = get_node_elevation(wn, start_node_name_val), get_node_elevation(wn, end_node_name_val)
+            line_color_pump = 'magenta' # Distinct color for pumps
+            if mode == '3d':
+                pump_line_obj_temp = ax.plot([start_pos_val[0], end_pos_val[0]], [start_pos_val[1], end_pos_val[1]], [start_elev_val, end_elev_val],
+                                       color=line_color_pump, linewidth=2, linestyle='--', zorder=2)[0]
+            else:
+                pump_line_obj_temp = ax.plot([start_pos_val[0], end_pos_val[0]], [start_pos_val[1], end_pos_val[1]],
+                                       color=line_color_pump, linewidth=2, linestyle='--', zorder=2)[0]
+            if pump_line_obj is None: pump_line_obj = pump_line_obj_temp # For legend handle
+
+    # Create legend for node types and pump lines
+    # Node legend handles come from the scatter plots if 'label' was used
+    current_handles, current_labels = ax.get_legend_handles_labels()
+    if pump_line_obj is not None and 'Pump Connection' not in current_labels:
+        current_handles.append(pump_line_obj)
+        current_labels.append('Pump Connection')
+    
+    if current_handles: # Only show legend if there's something to show
+        ax.legend(current_handles, current_labels, loc='upper right', fontsize=10)
+
+    if mode == '3d':
+        ax.view_init(elev=20, azim=45) # Adjusted view for potentially better visibility
+
+    plt.tight_layout(rect=[0, 0, 0.95, 0.95]) # Adjust rect to make space for colorbar
+
+    if save_path:
+        try:
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
+            print(f"Diameter visualization saved to: {save_path}")
+        except Exception as e:
+            print(f"Error saving diameter plot: {e}")
+            
+    if show:
+        plt.show()
+    
+    return figure
+
+# Add this function to your Visualise_network.py file
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd # For easier data manipulation for the heatmap
+import os
+# Make sure these can be imported from the context where Visualise_network.py is located
+# You might need to adjust relative paths if Visualise_network.py is in a different directory
+from PPO_Environment import WNTRGymEnv
+from Actor_Critic_Nets2 import GraphPPOAgent
+from stable_baselines3.common.vec_env import DummyVecEnv
+
+def plot_pipe_diameters_heatmap_over_time(
+    model_path: str,
+    pipes_config: dict,
+    scenarios_list: list, # Full list of scenarios for environment initialization
+    target_scenario_name: str,
+    num_episodes_for_data: int = 1, # Number of episodes to run for collecting data
+    save_dir: str = "Plots/Pipe_Diameter_Evolution"
+):
+    """
+    Runs a trained agent on a scenario, records pipe diameters at each major time step
+    for all pipes, and plots this data as a heatmap.
+
+    Args:
+        model_path (str): Path to the trained agent model file (without .zip).
+        pipes_config (dict): The pipes configuration dictionary.
+        scenarios_list (list): List of all possible scenarios (for env initialization).
+        target_scenario_name (str): The specific scenario to run and collect data from.
+        num_episodes_for_data (int): Number of episodes to average data over.
+                                     For a single representative run, use 1.
+        save_dir (str): Directory to save the generated plot.
+    """
+    print(f"\n--- Generating Pipe Diameter Evolution Heatmap ---")
+    print(f"Model: {os.path.basename(model_path)}")
+    print(f"Target Scenario: {target_scenario_name}")
+    print(f"Collecting data over {num_episodes_for_data} episode(s).")
+
+    # --- 1. Setup Environment and Agent ---
+    # We use the base WNTRGymEnv directly to step through and inspect.
+    env = WNTRGymEnv(
+        pipes=pipes_config, 
+        scenarios=scenarios_list,
+        # Pass the static estimates for normalization if you're using them
+        current_max_pd=5000.0, # Example value, ensure it matches your training
+        current_max_cost=2.5e7 # Example value
+    )
+    
+    # Agent needs a VecEnv for its constructor, even if it's a Dummy one.
+    temp_vec_env = DummyVecEnv([lambda: WNTRGymEnv(pipes_config, scenarios_list)])
+    agent = GraphPPOAgent(temp_vec_env, pipes_config=pipes_config)
+    agent.load(model_path)
+    temp_vec_env.close() # We'll use the 'env' instance directly.
+
+    # --- 2. Data Collection ---
+    # This list will store DataFrames, each from one episode.
+    # Each DataFrame will have time steps as index and pipe IDs as columns.
+    all_episodes_dfs = []
+
+    for episode_idx in range(num_episodes_for_data):
+        print(f"  Running Episode {episode_idx + 1}/{num_episodes_for_data} for data collection...")
+        obs, info = env.reset(scenario_name=target_scenario_name)
+        
+        # {time_step: {pipe_id: diameter}}
+        episode_diameter_data_dict = {} 
+        
+        done = False
+        major_step_count = 0
+
+        while not done:
+            # Record diameters at the START of the current major_step_count
+            current_diameters_at_step = {}
+            if env.current_network: # Ensure network is loaded
+                for pipe_name in env.pipe_names: # env.pipe_names is updated in _load_network_for_timestep
+                    current_diameters_at_step[pipe_name] = env.current_network.get_link(pipe_name).diameter
+            if current_diameters_at_step: # Only add if there's data
+                 episode_diameter_data_dict[major_step_count] = current_diameters_at_step
+            
+            # Let the agent make decisions for all pipes in this major step
+            # The WNTRGymEnv's step method internally loops through current_pipe_index
+            # until a full set of decisions is made or the episode ends.
+            actions_for_this_major_step_completed = False
+            while not actions_for_this_major_step_completed and not done:
+                batched_obs = {key: np.expand_dims(value, axis=0) for key, value in obs.items()}
+                action_int, _ = agent.predict(batched_obs, deterministic=True)
+                
+                obs, reward, terminated, truncated, step_info = env.step(action_int.item())
+                done = terminated or truncated
+
+                # Check if the 'step' completed a full pass over pipes
+                if step_info.get('pipe_changes') is not None or done:
+                    actions_for_this_major_step_completed = True
+            
+            if not done:
+                major_step_count += 1 # Increment for the next state to be recorded
+
+        if episode_diameter_data_dict:
+            # Convert this episode's data to a DataFrame: Index=time_step, Columns=pipe_id
+            episode_df = pd.DataFrame.from_dict(episode_diameter_data_dict, orient='index')
+            all_episodes_dfs.append(episode_df)
+    
+    env.close()
+
+    if not all_episodes_dfs:
+        print("No diameter data collected. Cannot generate heatmap.")
+        return None
+
+    # --- 3. Process Data for Heatmap ---
+    # If multiple episodes, average the DataFrames
+    if len(all_episodes_dfs) > 1:
+        # Concatenate along axis 0 (rows are time steps), then group by time step and average.
+        # This handles cases where some pipes might not appear in all episodes/timesteps (NaNs).
+        processed_data_df = pd.concat(all_episodes_dfs).groupby(level=0).mean()
+    elif len(all_episodes_dfs) == 1:
+        processed_data_df = all_episodes_dfs[0]
+    else: # Should be caught above
+        return None
+
+    # We want pipes as rows (Y-axis) and time steps as columns (X-axis)
+    heatmap_df = processed_data_df.transpose()
+
+    # Sort Pipe IDs for consistent Y-axis order (optional, but good for readability)
+    # Natural sort would be better if pipe names are like 'P1', 'P10', 'P2'.
+    # For now, simple alphabetical sort.
+    try:
+        sorted_pipe_ids = natsorted(heatmap_df.index)
+    except ImportError:
+        print("natsort library not found, using simple sort for pipe IDs.")
+        sorted_pipe_ids = sorted(heatmap_df.index)
+    
+    heatmap_df = heatmap_df.reindex(sorted_pipe_ids)
+
+    if heatmap_df.empty:
+        print("Processed heatmap data is empty after processing. Cannot plot.")
+        return None
+
+    # --- 4. Plotting the Heatmap ---
+    fig_height = max(8, len(heatmap_df.index) * 0.25) # Adjust height based on number of pipes
+    fig_width = max(12, heatmap_df.shape[1] * 0.5)   # Adjust width based on number of time steps
+    
+    plt.figure(figsize=(fig_width, fig_height))
+    
+    try:
+        import seaborn as sns
+        ax = sns.heatmap(
+            heatmap_df, 
+            annot=False, # Annotations can be cluttered; consider for smaller number of pipes/steps
+            cmap="viridis", # Colormap (e.g., "viridis", "plasma", "magma")
+            linewidths=.5,
+            cbar_kws={'label': 'Pipe Diameter (m)'}
+        )
+    except ImportError:
+        print("Seaborn not found. Using basic matplotlib imshow for heatmap.")
+        plt.imshow(heatmap_df, aspect='auto', cmap="viridis", interpolation='nearest')
+        plt.colorbar(label='Pipe Diameter (m)')
+        ax = plt.gca() # Get current axes for labeling
+
+    ax.set_title(f"Pipe Diameter Evolution: {target_scenario_name}\n(Agent: {os.path.basename(model_path)}, {num_episodes_for_data} Episode(s) Data)", fontsize=14)
+    ax.set_xlabel("Major Environment Time Step", fontsize=12)
+    ax.set_ylabel("Pipe ID", fontsize=12)
+    
+    # Ensure all time steps are shown as ticks if not too many
+    if heatmap_df.shape[1] < 30: # If fewer than 30 time steps, show all
+         ax.set_xticks(np.arange(heatmap_df.shape[1]) + 0.5)
+         ax.set_xticklabels(heatmap_df.columns)
+
+    plt.xticks(rotation=45, ha="right")
+    plt.yticks(rotation=0) # Keep pipe IDs horizontal
+    
+    plt.tight_layout()
+
+    # --- 5. Save and Show ---
+    os.makedirs(save_dir, exist_ok=True)
+    plot_filename = f"diam_heatmap_{os.path.basename(model_path)}_{target_scenario_name}.png"
+    full_save_path = os.path.join(save_dir, plot_filename)
+    try:
+        plt.savefig(full_save_path)
+        print(f"Pipe diameter heatmap saved to: {full_save_path}")
+    except Exception as e:
+        print(f"Error saving heatmap: {e}")
+
+    plt.show()
+    plt.close(plt.gcf()) # Close the figure to free memory
+    
+    return plt.gcf() # Return the figure object
 
 if __name__ == "__main__":
     script_dir = os.path.dirname(__file__) #
     
     # Define paths to the INP files
-    hanoi_inp_path = os.path.join(script_dir, 'Initial_networks', 'exeter', 'anytown-3.inp') #
-    anytown_inp_path = os.path.join(script_dir, 'Initial_networks', 'exeter', 'hanoi-3.inp') #
+    hanoi_inp_path = os.path.join(script_dir, 'Initial_networks', 'exeter', 'hanoi-3.inp') #
+    anytown_inp_path = os.path.join(script_dir, 'Initial_networks', 'exeter', 'anytown-3.inp') #
 
     # Load the network models
     wn_hanoi = wntr.network.WaterNetworkModel(hanoi_inp_path) #
@@ -516,18 +878,19 @@ if __name__ == "__main__":
     # fig.suptitle('3D Network visualisations with Pressure', fontsize=16)
 
     # visualise Hanoi network on the first subplot
-    if results_hanoi:
-        print("visualising Hanoi network in 3D...")
-        visualise_network(wn_hanoi, results_hanoi, "Hanoi Network (3D)", 
-                          save_path=save_hanoi, mode='3d', show=False)
+    # if results_hanoi:
+    #     print("visualising Hanoi network in 3D...")
+    #     visualise_network(wn_hanoi, results_hanoi, "Hanoi Network (3D)", 
+    #                       save_path=save_hanoi, mode='3d', show=False)
 
-    # visualise Anytown network on the second subplot
-    if results_anytown:
-        print("visualising Anytown network in 3D...")
-        visualise_network(wn_anytown, results_anytown, "Anytown Network (3D)", 
-                          save_path=save_anytown, mode='3d', show=False)
+    # # visualise Anytown network on the second subplot
+    # if results_anytown:
+    #     print("visualising Anytown network in 3D...")
+    #     visualise_network(wn_anytown, results_anytown, "Anytown Network (3D)", 
+    #                       save_path=save_anytown, mode='3d', show=False)
         
     # plt.tight_layout(rect=[0, 0.05, 1, 0.95], pad = 3.0, w_pad = 4.0) # Adjust layout to make space for suptitle and colorbars
     # # plt.savefig(os.path.join(script_dir, 'Plots', '3D_Network_visualisations.png'), dpi=150, bbox_inches='tight') #
     # plt.show()
 
+    visualise_demands(wn_anytown, "Anytown Network Demands", save_path=os.path.join(script, 'Plots', 'Anytown_demands.png'), show=True)

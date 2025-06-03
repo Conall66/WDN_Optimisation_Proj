@@ -14,6 +14,7 @@ from stable_baselines3.common.vec_env import DummyVecEnv
 from PPO_Environment import WNTRGymEnv
 from Actor_Critic_Nets2 import GraphPPOAgent
 from Plot_Agents import PlottingCallback, plot_training_and_performance, plot_action_analysis, plot_final_agent_rewards_by_scenario, plot_upgrades_per_timestep
+from Visualise_network import plot_pipe_diameters_heatmap_over_time
 
 def train_agent_with_monitoring(net_type = 'both', time_steps = 50000):
     """
@@ -59,7 +60,7 @@ def train_agent_with_monitoring(net_type = 'both', time_steps = 50000):
 
     num_cpu = mp.cpu_count()
     vec_env = SubprocVecEnv([make_env for _ in range(num_cpu)]) # This line parallelises code
-    # vec_env = DummyVecEnv([make_env])
+    vec_env = DummyVecEnv([make_env])
     
     ppo_config = {
         "learning_rate": 3e-4, "n_steps": 2048, "batch_size": 64, "n_epochs": 10,
@@ -253,7 +254,7 @@ def train_multiple():
     }
     ppo_config = {
         "learning_rate": 3e-4, "n_steps": 2048, "batch_size": 64, "n_epochs": 10,
-        "gamma": 0.5, "gae_lambda": 0.95, "clip_range": 0.2, "ent_coef": 0.01,
+        "gamma": 0.9, "gae_lambda": 0.95, "clip_range": 0.2, "ent_coef": 0.01,
         "vf_coef": 0.5, "max_grad_norm": 0.5, "verbose": 1
     }
 
@@ -395,7 +396,8 @@ def train_just_anytown():
 
     # Applying a low discount factor so the agent starts to prioritise short term rewwards more greatly
 
-    num_cpu = int(mp.cpu_count() / 2) # Only use half cores to avoid overloading simulation calls
+    num_cpu = mp.cpu_count() # Only use half cores to avoid overloading simulation calls
+    # num_cpu = 2  # For testing, use only 2 CPU cores
 
     # print(f"Number of CPU cores available: {num_cpu}")
 
@@ -416,8 +418,8 @@ def train_just_anytown():
 
     start_time = time.time()
 
-    vec_env_anytown = SubprocVecEnv([lambda: WNTRGymEnv(pipes, anytown_scenarios) for _ in range(num_cpu)])
-    # vec_env_anytown = DummyVecEnv([lambda: WNTRGymEnv(pipes, anytown_scenarios)])
+    # vec_env_anytown = SubprocVecEnv([lambda: WNTRGymEnv(pipes, anytown_scenarios) for _ in range(num_cpu)])
+    vec_env_anytown = DummyVecEnv([lambda: WNTRGymEnv(pipes, anytown_scenarios)])
     agent1 = GraphPPOAgent(vec_env_anytown, pipes, **ppo_config)
     
     cb1 = PlottingCallback()
@@ -426,6 +428,156 @@ def train_just_anytown():
     ts1 = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     model_path1 = os.path.join("agents", f"agent1_anytown_only_{ts1}")
     log_path1 = os.path.join("Plots", f"training_log_agent1_anytown_only_{ts1}.csv")
+    agent1.save(model_path1)
+
+    os.makedirs("Plots", exist_ok=True)
+
+    # Check if file exists before renaming
+    if os.path.exists(os.path.join("Plots", "training_log.csv")):
+        os.rename(os.path.join("Plots", "training_log.csv"), log_path1)
+    else:
+        print(f"Warning: Could not find training log file to rename. Will continue without renaming.")
+
+    # os.rename(os.path.join("Plots", "training_log.csv"), log_path1)
+    # vec_env_anytown.close()
+
+    print(f"Agent 1 training complete. Model: {model_path1}, Log: {log_path1}")
+    drl1_results = evaluate_agent_by_scenario(model_path1, pipes, anytown_scenarios)
+    rand1_results = evaluate_random_policy_by_scenario(pipes, anytown_scenarios)
+    generate_and_save_plots(model_path1, log_path1, drl1_results, rand1_results, pipes, anytown_scenarios)
+
+    training_time = time.time() - start_time
+
+    plt.show()  # Show plots if running interactively
+    print("\n" + "="*60)
+    print("### TRAINING COMPLETE ###")
+    print("="*60)
+
+def train_just_hanoi():
+
+    pipes = {
+        'Pipe_1': {'diameter': 0.3048, 'unit_cost': 36.58},
+        'Pipe_2': {'diameter': 0.4064, 'unit_cost': 56.32},
+        'Pipe_3': {'diameter': 0.5080, 'unit_cost': 78.71},
+        'Pipe_4': {'diameter': 0.6096, 'unit_cost': 103.47},
+        'Pipe_5': {'diameter': 0.7620, 'unit_cost': 144.60},
+        'Pipe_6': {'diameter': 1.0160, 'unit_cost': 222.62}
+    }
+    ppo_config = {
+        "learning_rate": 3e-4, "n_steps": 2048, "batch_size": 64, "n_epochs": 10,
+        "gamma": 0.8, "gae_lambda": 0.95, "clip_range": 0.2, "ent_coef": 0.01,
+        "vf_coef": 0.5, "max_grad_norm": 0.5, "verbose": 2
+    }
+
+    # Applying a low discount factor so the agent starts to prioritise short term rewwards more greatly
+
+    num_cpu = mp.cpu_count()
+    # num_cpu = 2  # For testing, use only 2 CPU cores
+
+    # print(f"Number of CPU cores available: {num_cpu}")
+
+    total_timesteps = 200000
+    all_scenarios = [
+        'anytown_densifying_1', 'anytown_densifying_2', 'anytown_densifying_3', 'anytown_sprawling_1', 'anytown_sprawling_2', 'anytown_sprawling_3',
+        'hanoi_densifying_1', 'hanoi_densifying_2', 'hanoi_densifying_3', 'hanoi_sprawling_1', 'hanoi_sprawling_2', 'hanoi_sprawling_3'
+    ]
+    anytown_scenarios = [s for s in all_scenarios if 'anytown' in s]
+    hanoi_scenarios = [s for s in all_scenarios if 'hanoi' in s]
+
+    # ===================================================================
+    # --- AGENT 2: Hanoi Only ---
+    # ===================================================================
+    print("\n" + "="*60)
+    print("### AGENT 1: TRAINING ON HANOI ONLY ###")
+    print("="*60)
+
+    start_time = time.time()
+
+    vec_env_hanoi = SubprocVecEnv([lambda: WNTRGymEnv(pipes, anytown_scenarios) for _ in range(num_cpu)])
+    # vec_env_hanoi = DummyVecEnv([lambda: WNTRGymEnv(pipes, hanoi_scenarios)])
+    agent1 = GraphPPOAgent(vec_env_hanoi, pipes, **ppo_config)
+    
+    cb1 = PlottingCallback()
+    agent1.train(total_timesteps=total_timesteps, callback=cb1)
+    
+    ts1 = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    model_path1 = os.path.join("agents", f"agent1_hanoi_only_{ts1}")
+    log_path1 = os.path.join("Plots", f"training_log_agent1_hanoi_only_{ts1}.csv")
+    agent1.save(model_path1)
+
+    os.makedirs("Plots", exist_ok=True)
+
+    # Check if file exists before renaming
+    if os.path.exists(os.path.join("Plots", "training_log.csv")):
+        os.rename(os.path.join("Plots", "training_log.csv"), log_path1)
+    else:
+        print(f"Warning: Could not find training log file to rename. Will continue without renaming.")
+
+    # os.rename(os.path.join("Plots", "training_log.csv"), log_path1)
+    # vec_env_anytown.close()
+
+    print(f"Agent 1 training complete. Model: {model_path1}, Log: {log_path1}")
+    drl1_results = evaluate_agent_by_scenario(model_path1, pipes, anytown_scenarios)
+    rand1_results = evaluate_random_policy_by_scenario(pipes, anytown_scenarios)
+    generate_and_save_plots(model_path1, log_path1, drl1_results, rand1_results, pipes, anytown_scenarios)
+
+    training_time = time.time() - start_time
+
+    plt.show()  # Show plots if running interactively
+    print("\n" + "="*60)
+    print("### TRAINING COMPLETE ###")
+    print("="*60)
+
+def train_both():
+
+    pipes = {
+        'Pipe_1': {'diameter': 0.3048, 'unit_cost': 36.58},
+        'Pipe_2': {'diameter': 0.4064, 'unit_cost': 56.32},
+        'Pipe_3': {'diameter': 0.5080, 'unit_cost': 78.71},
+        'Pipe_4': {'diameter': 0.6096, 'unit_cost': 103.47},
+        'Pipe_5': {'diameter': 0.7620, 'unit_cost': 144.60},
+        'Pipe_6': {'diameter': 1.0160, 'unit_cost': 222.62}
+    }
+    ppo_config = {
+        "learning_rate": 3e-4, "n_steps": 2048, "batch_size": 64, "n_epochs": 10,
+        "gamma": 0.9, "gae_lambda": 0.95, "clip_range": 0.2, "ent_coef": 0.01,
+        "vf_coef": 0.5, "max_grad_norm": 0.5, "verbose": 2
+    }
+
+    # Applying a low discount factor so the agent starts to prioritise short term rewwards more greatly
+
+    num_cpu = mp.cpu_count()
+    # num_cpu = 2  # For testing, use only 2 CPU cores
+
+    # print(f"Number of CPU cores available: {num_cpu}")
+
+    total_timesteps = 500000
+    all_scenarios = [
+        'anytown_densifying_1', 'anytown_densifying_2', 'anytown_densifying_3', 'anytown_sprawling_1', 'anytown_sprawling_2', 'anytown_sprawling_3',
+        'hanoi_densifying_1', 'hanoi_densifying_2', 'hanoi_densifying_3', 'hanoi_sprawling_1', 'hanoi_sprawling_2', 'hanoi_sprawling_3'
+    ]
+    anytown_scenarios = [s for s in all_scenarios if 'anytown' in s]
+    hanoi_scenarios = [s for s in all_scenarios if 'hanoi' in s]
+
+    # ===================================================================
+    # --- AGENT 3: Both ---
+    # ===================================================================
+    print("\n" + "="*60)
+    print("### AGENT 1: TRAINING ON BOTH NETWORKS ###")
+    print("="*60)
+
+    start_time = time.time()
+
+    # vec_env_both = SubprocVecEnv([lambda: WNTRGymEnv(pipes, all_scenarios) for _ in range(num_cpu)])
+    vec_env_both = DummyVecEnv([lambda: WNTRGymEnv(pipes, hanoi_scenarios)])
+    agent1 = GraphPPOAgent(vec_env_both, pipes, **ppo_config)
+    
+    cb1 = PlottingCallback()
+    agent1.train(total_timesteps=total_timesteps, callback=cb1)
+    
+    ts1 = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    model_path1 = os.path.join("agents", f"agent1_hanoi_only_{ts1}")
+    log_path1 = os.path.join("Plots", f"training_log_agent1_hanoi_only_{ts1}.csv")
     agent1.save(model_path1)
 
     os.makedirs("Plots", exist_ok=True)
@@ -528,27 +680,42 @@ def inspect_agent_actions(model_path: str, pipes: dict, scenarios: list, target_
 if __name__ == "__main__":
     # --- Overall Configuration ---
     
-    train_just_anytown()
+    # train_just_anytown()
     # train_multiple()
+    # train_just_hanoi()
+    # train_both()
 
-    # pipes_config = {
-    #     'Pipe_1': {'diameter': 0.3048, 'unit_cost': 36.58},
-    #     'Pipe_2': {'diameter': 0.4064, 'unit_cost': 56.32},
-    #     'Pipe_3': {'diameter': 0.5080, 'unit_cost': 78.71},
-    #     'Pipe_4': {'diameter': 0.6096, 'unit_cost': 103.47},
-    #     'Pipe_5': {'diameter': 0.7620, 'unit_cost': 144.60},
-    #     'Pipe_6': {'diameter': 1.0160, 'unit_cost': 222.62}
-    # }
+    pipes_config = {
+        'Pipe_1': {'diameter': 0.3048, 'unit_cost': 36.58},
+        'Pipe_2': {'diameter': 0.4064, 'unit_cost': 56.32},
+        'Pipe_3': {'diameter': 0.5080, 'unit_cost': 78.71},
+        'Pipe_4': {'diameter': 0.6096, 'unit_cost': 103.47},
+        'Pipe_5': {'diameter': 0.7620, 'unit_cost': 144.60},
+        'Pipe_6': {'diameter': 1.0160, 'unit_cost': 222.62}
+    }
 
-    # # Anytown scenarios
-    # scenarios_list = [
-    #     'anytown_densifying_1', 'anytown_densifying_2', 'anytown_densifying_3',
-    #     'anytown_sprawling_1', 'anytown_sprawling_2', 'anytown_sprawling_3'
-    # ]
+    # Anytown scenarios
+    scenarios_list = [
+        'anytown_densifying_1', 'anytown_densifying_2', 'anytown_densifying_3',
+        'anytown_sprawling_1', 'anytown_sprawling_2', 'anytown_sprawling_3', 
+        'hanoi_densifying_1', 'hanoi_densifying_2', 'hanoi_densifying_3',
+        'hanoi_sprawling_1', 'hanoi_sprawling_2', 'hanoi_sprawling_3'
+    ]
 
-    # saved_model_path = "agents/agent1_anytown_only_20250602_170720" # Example path
+    anytown_scenarios = [s for s in scenarios_list if 'anytown' in s]
+    hanoi_scenarios = [s for s in scenarios_list if 'hanoi' in s]
+
+    saved_model_path = "agents/agent1_hanoi_only_20250603_064211"
     
-    # if os.path.exists(saved_model_path + ".zip"):
+    if os.path.exists(saved_model_path + ".zip"):
     #      inspect_agent_actions(saved_model_path, pipes_config, scenarios_list, target_scenario_name='anytown_sprawling_2')
-    # else:
-    #      print(f"Model path not found: {saved_model_path}.zip")
+        plot_pipe_diameters_heatmap_over_time(
+            model_path=saved_model_path,
+            pipes_config=pipes_config,
+            scenarios_list=hanoi_scenarios,
+            num_episodes_for_data=12,  # Number of episodes to average over
+            target_scenario_name='hanoi_sprawling_2'  # Specify the scenario to visualise
+
+        )
+    else:
+         print(f"Model path not found: {saved_model_path}.zip")

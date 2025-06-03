@@ -251,6 +251,7 @@ def generate_transition_states(start_wn, end_wn, scenario, num_steps=50, net_sav
     # Identify added junctions (using names rather than data)
     start_junction_names = set(start_wn.junction_name_list)
     end_junction_names = set(end_wn.junction_name_list)
+    
     added_junction_names = sorted(end_junction_names - start_junction_names)
     
     # Map tracking which pipes to add with each junction

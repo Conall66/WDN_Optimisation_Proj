@@ -17,6 +17,8 @@ import time
 import wntr.metrics.economic as economics
 import tempfile
 import shutil
+import gc
+import threading
 
 # convert networkx graph to .inp file
 
@@ -183,6 +185,7 @@ def run_epanet_simulation(wn, static=False):
     finally:
         # 4. CRITICAL: Always change the CWD back to the original path first.
         os.chdir(original_cwd)
+        gc.collect() # Force garbage collection to release any file handles.
         
         # 5. Implement a robust cleanup with a retry loop.
         for i in range(5):  # Try to clean up 5 times
@@ -194,6 +197,7 @@ def run_epanet_simulation(wn, static=False):
                 # This catches the exact [WinError 32] you are seeing.
                 # print(f"Cleanup attempt {i+1} failed for {temp_dir_path}. Retrying in 0.1s...")
                 time.sleep(0.1)
+
             except Exception as e:
                 print(f"Warning: An unexpected error occurred during cleanup of {temp_dir_path}: {e}")
                 break

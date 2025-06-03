@@ -176,14 +176,14 @@ def reward_just_pd(
     demand_satisfaction_info = max(demand_satisfaction, 0)
 
     # --- MODIFIED REWARD CALCULATION ---
-    # The agent maximizes reward. To minimise pressure deficit, the reward should be -pressure_deficit.
+    # The agent maximizes reward. To minimize pressure deficit, the reward should be -pressure_deficit.
     # A smaller (closer to zero) pressure deficit results in a less negative (i.e., higher) reward.
     reward = -pressure_deficit
     # --- END OF MODIFIED REWARD CALCULATION ---
 
     # Modify the print statement to reflect the new reward focus
     print("-------------------------------------")
-    print(f"Simplified Reward (solely minimising PD): {reward:.4f} (based on raw Pressure Deficit: {pressure_deficit:.4f})")
+    print(f"Simplified Reward (solely minimizing PD): {reward:.4f} (based on raw Pressure Deficit: {pressure_deficit:.4f})")
     # You can still print other metrics if desired for debugging:
     # print(f"  (For info: Cost={cost:.2f}, Demand Satisfaction={demand_satisfaction_info:.4f})")
     print("------------------------------------")
@@ -196,25 +196,24 @@ def reward_just_pd(
 
 def reward_minimise_pd(performance_metrics: dict, max_pd: float, **kwargs) -> tuple:
     """
-    CURRICULUM STAGE 1: Reward function focused solely on minimising pressure deficit.
+    CURRICULUM STAGE 1: Reward function focused solely on minimizing pressure deficit.
     The reward is the negative of the pressure deficit, directly incentivizing the agent
     to reduce it towards zero.
     """
     pressure_deficit = performance_metrics.get('total_pressure_deficit', 0.0)
-    
-    # The reward is simply the negative pressure deficit. A higher reward means a lower deficit.
-    reward = -pressure_deficit
     
     # Return values for logging purposes, even if not used in reward calculation
     cost = kwargs.get('cost', 0)
     demand_satisfaction = performance_metrics.get('demand_satisfaction_ratio', 0)
     pd_ratio = 1 - (pressure_deficit / max_pd) if max_pd > 0 else 0
 
+    reward = pd_ratio
+
     return reward, cost, pd_ratio, demand_satisfaction
 
 def reward_pd_and_cost(performance_metrics: dict, cost: float, max_pd: float, max_cost: float, **kwargs) -> tuple:
     """
-    CURRICULUM STAGE 2: Reward function that balances minimising pressure deficit and cost.
+    CURRICULUM STAGE 2: Reward function that balances minimizing pressure deficit and cost.
     It uses normalized ratios to prevent one objective from dominating the other.
     """
     pressure_deficit = performance_metrics.get('total_pressure_deficit', 0.0)
@@ -694,7 +693,7 @@ def plot_diameter_effect_on_reward(inp_file, net_name):
     plt.show()
     
     # Plot key metrics
-    fig = plt.figure(figsize=(12, 10))
+    fig = plt.figure(figsize=(16, 5))
     
     metrics = ['total_cost', 'pressure deficit ratio', 'demand satisfaction ratio']
     titles = [f'Total Cost of Actions for {net_name}',
@@ -702,11 +701,11 @@ def plot_diameter_effect_on_reward(inp_file, net_name):
               f'Demand Satisfaction Ratio for {net_name}']
     
     # Create a 2x2 grid but only use 3 positions
-    grid_positions = [(0, 0), (0, 1), (1, 0)]  
+    grid_positions = [(0, 0), (0, 1), (0, 2)]  
     
     for i, ((row, col), metric, title) in enumerate(zip(grid_positions, metrics, titles)):
         # Create subplot at the specified position
-        ax = plt.subplot2grid((2, 2), (row, col))
+        ax = plt.subplot2grid((1, 3), (row, col))
         
         # Plot the bars
         if metric == 'total_cost':

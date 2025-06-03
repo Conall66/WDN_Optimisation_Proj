@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import shutil
+from shutil import copyfile
 import random
 import wntr
 from wntr.network.io import write_inpfile

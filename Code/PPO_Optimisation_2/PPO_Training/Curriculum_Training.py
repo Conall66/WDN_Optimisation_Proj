@@ -27,6 +27,7 @@ SCENARIOS = [
     'hanoi_densifying_1', 'hanoi_densifying_2', 'hanoi_densifying_3',
     'hanoi_sprawling_1', 'hanoi_sprawling_2', 'hanoi_sprawling_3'
 ]
+
 NUM_CPU = max(1, torch.multiprocessing.cpu_count() - 1)
 
 # --- 2. CURRICULUM DEFINITION ---
@@ -35,19 +36,19 @@ CURRICULUM = [
         "name": "Stage1_Minimize_Pressure_Deficit",
         "reward_mode": "minimize_pd",
         "timesteps": 50000,
-        "ppo_config": {"learning_rate": 5e-4, "n_steps": 2048, "batch_size": 64, "gamma": 0.8}
+        "ppo_config": {"learning_rate": 5e-4, "n_steps": 2048, "batch_size": 64, "gamma": 0.9}
     },
     {
         "name": "Stage2_Balance_PD_and_Cost",
         "reward_mode": "pd_and_cost",
         "timesteps": 75000,
-        "ppo_config": {"learning_rate": 2e-4, "n_steps": 2048, "batch_size": 64, "gamma": 0.85}
+        "ppo_config": {"learning_rate": 2e-4, "n_steps": 2048, "batch_size": 64, "gamma": 0.95}
     },
     {
         "name": "Stage3_Full_Objective_Fine_Tuning",
         "reward_mode": "full_objective",
         "timesteps": 50000,
-        "ppo_config": {"learning_rate": 1e-4, "n_steps": 4096, "batch_size": 128, "gamma": 0.9}
+        "ppo_config": {"learning_rate": 1e-4, "n_steps": 4096, "batch_size": 128, "gamma": 0.99}
     }
 ]
 
