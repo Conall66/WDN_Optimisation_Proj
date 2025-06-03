@@ -795,6 +795,8 @@ def plot_pipe_diameters_heatmap_over_time(
     except ImportError:
         print("natsort library not found, using simple sort for pipe IDs.")
         sorted_pipe_ids = sorted(heatmap_df.index)
+
+    print(f"Sorted Pipe IDs: {sorted_pipe_ids}")
     
     heatmap_df = heatmap_df.reindex(sorted_pipe_ids)
 
@@ -803,8 +805,8 @@ def plot_pipe_diameters_heatmap_over_time(
         return None
 
     # --- 4. Plotting the Heatmap ---
-    fig_height = max(8, len(heatmap_df.index) * 0.25) # Adjust height based on number of pipes
-    fig_width = max(12, heatmap_df.shape[1] * 0.5)   # Adjust width based on number of time steps
+    fig_height = max(8, len(heatmap_df.index) * 0.1) # Adjust height based on number of pipes
+    fig_width = max(12, heatmap_df.shape[1] * 0.3)   # Adjust width based on number of time steps
     
     plt.figure(figsize=(fig_width, fig_height))
     
@@ -893,4 +895,30 @@ if __name__ == "__main__":
     # # plt.savefig(os.path.join(script_dir, 'Plots', '3D_Network_visualisations.png'), dpi=150, bbox_inches='tight') #
     # plt.show()
 
-    visualise_demands(wn_anytown, "Anytown Network Demands", save_path=os.path.join(script, 'Plots', 'Anytown_demands.png'), show=True)
+    # visualise_demands(wn_anytown, "Anytown Network Demands", save_path=os.path.join(script, 'Plots', 'Anytown_demands.png'), show=True)
+
+    # Generate a heatmap from a pretrained agent
+    model_path = os.path.join(script_dir, 'agents', 'agent1_hanoi_only_20250603_064211.zip')
+
+    pipes_config = {
+        'Pipe_1': {'diameter': 0.3048, 'unit_cost': 36.58}, 'Pipe_2': {'diameter': 0.4064, 'unit_cost': 56.32},
+        'Pipe_3': {'diameter': 0.5080, 'unit_cost': 78.71}, 'Pipe_4': {'diameter': 0.6096, 'unit_cost': 103.47},
+        'Pipe_5': {'diameter': 0.7620, 'unit_cost': 144.60}, 'Pipe_6': {'diameter': 1.0160, 'unit_cost': 222.62}
+    }
+    scenarios_list = [
+        'anytown_densifying_1', 'anytown_densifying_2', 'anytown_densifying_3', 
+        'anytown_sprawling_1', 'anytown_sprawling_2', 'anytown_sprawling_3',
+        'hanoi_densifying_1', 'hanoi_densifying_2', 'hanoi_densifying_3', 
+        'hanoi_sprawling_1', 'hanoi_sprawling_2', 'hanoi_sprawling_3'
+    ]
+
+    target_scenario_name = 'hanoi_densifying_3' # Example scenario to visualize
+    num_episodes_for_data = 4 # For a single representative run, use 1
+    plot_pipe_diameters_heatmap_over_time(
+        model_path=model_path,
+        pipes_config=pipes_config,
+        scenarios_list=scenarios_list,
+        target_scenario_name=target_scenario_name,
+        num_episodes_for_data=num_episodes_for_data,
+        save_dir=os.path.join(script_dir, 'Plots', 'Pipe_Diameter_Evolution')
+    )

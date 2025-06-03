@@ -10,12 +10,16 @@ from gymnasium import spaces
 import numpy as np
 import wntr
 import os
-import random
+# import random
 from typing import Dict, List, Tuple, Optional
-import networkx as nx
+# import networkx as nx
+import shutil
+import multiprocessing
 
 from Hydraulic_Model import run_epanet_simulation, evaluate_network_performance
 from Reward import calculate_reward, reward_just_pd, compute_total_cost, reward_minimise_pd, reward_pd_and_cost, reward_full_objective
+
+multiprocessing.set_start_method('spawn', force=True)
 
 class WNTRGymEnv(gym.Env):
     metadata = {'render_modes': ['human']}
@@ -58,6 +62,10 @@ class WNTRGymEnv(gym.Env):
         self.actions_this_timestep = []
         self.original_diameters_this_timestep = {}
         self.chosen_diameters_from_previous_step = None
+
+        # pid = os.getpid()
+        # self.temp_dir = f"wntr_temp_{pid}"
+        # os.makedirs(self.temp_dir, exist_ok=True)
         
         # --- Action Space (Unchanged) ---
         self.action_space = spaces.Discrete(len(self.pipe_diameter_options) + 1)
@@ -78,7 +86,14 @@ class WNTRGymEnv(gym.Env):
 
     def load_network_states(self, scenario: str) -> Dict[int, str]:
         scenario_path = os.path.join(self.networks_folder, scenario)
-        inp_files = sorted([f for f in os.listdir(scenario_path) if f.endswith('.inp')])
+        # inp_files = sorted([f for f in os.listdir(scenario_path) if f.endswith('.inp')])
+
+        # sort inp_files by the step number in the filename
+        inp_files = [f for f in os.listdir(scenario_path) if f.endswith('.inp')]
+        inp_files.sort(key=lambda x: int(x.split('_')[1].split('.')[0]))  # Assuming filenames like 'network_0.inp', 'network_1.inp', etc.
+
+        # print(f"INFO: Found {len(inp_files)} .inp files in scenario '{scenario}': {inp_files}")
+
         return {i: os.path.join(scenario_path, f) for i, f in enumerate(inp_files)}
 
     def get_network_features(self) -> Dict[str, np.ndarray]:
@@ -170,7 +185,7 @@ class WNTRGymEnv(gym.Env):
         # Add this logic to select the scenario
         if scenario_name and scenario_name in self.scenarios:
             self.current_scenario = scenario_name
-            print(f"INFO: Running specified scenario: {self.current_scenario}")
+            # print(f"INFO: Running specified scenario: {self.current_scenario}")
         else:
             self.current_scenario = self.np_random.choice(self.scenarios)
         
@@ -416,4 +431,5 @@ class WNTRGymEnv(gym.Env):
         return mask
 
     def close(self):
+        shutil.rmtree(self.temp_dir)
         pass

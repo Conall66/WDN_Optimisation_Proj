@@ -16,9 +16,12 @@ from wntr.network.io import write_inpfile
 from wntr.graphics.network import plot_network
 import random
 from copy import deepcopy
+import seaborn as sns
+from matplotlib.ticker import MaxNLocator
 
 from Demand_gen import generate_demand_curves
 from Visualise_network import visualise_network, visualise_demands
+from Test_files.New_nets import plot_junctions_and_pipes
 
 # Generate subfolders for each scenario combination in Plots folder
 """
@@ -256,6 +259,9 @@ def generate_transition_states(start_wn, end_wn, scenario, num_steps=50, net_sav
     
     # Map tracking which pipes to add with each junction
     junction_pipe_map = {j: [] for j in added_junction_names}
+
+    print (f"Added junctions: {added_junction_names}")
+    print(f"Junction pipe map: {junction_pipe_map}")
     
     # Identify new pipes
     for pipe_name in end_wn.pipe_name_list:
@@ -285,6 +291,9 @@ def generate_transition_states(start_wn, end_wn, scenario, num_steps=50, net_sav
     for step in range(num_steps):
         # Create a copy of the previous network
         new_wn = deepcopy(prev_network)
+
+        # Print the number of nodes in the new network
+        print(f"Step {step + 1}: Current network has {len(new_wn.nodes)} nodes.")
         
         # Determine how many nodes to add in this step
         add_nodes += nodes_per_step
@@ -343,6 +352,179 @@ def generate_transition_states(start_wn, end_wn, scenario, num_steps=50, net_sav
         
         # Update previous network for next step
         prev_network = new_wn
+
+        # Print the number of nodes in the prev_network here
+        print(f"Step {step + 1}: Previous network has {len(prev_network.nodes)} nodes.")
+
+def analyse_network_evolution(base_path):
+    """
+    analyse the evolution of networks for each scenario by counting junctions and pipes.
+    
+    Parameters:
+    -----------
+    base_path : str
+        Path to the directory containing scenario folders with network files
+    """
+    # Define the scenarios
+    scenarios = [
+        'anytown_sprawling_1', 'anytown_sprawling_2', 'anytown_sprawling_3',
+        'anytown_densifying_1', 'anytown_densifying_2', 'anytown_densifying_3',
+        'hanoi_sprawling_1', 'hanoi_sprawling_2', 'hanoi_sprawling_3',
+        'hanoi_densifying_1', 'hanoi_densifying_2', 'hanoi_densifying_3'
+    ]
+    
+    # Create dataframe to store results
+    results = []
+    
+    for scenario in scenarios:
+        scenario_path = os.path.join(base_path, scenario)
+        print(f"Analyzing scenario: {scenario}")
+        
+        # Check if scenario folder exists
+        if not os.path.exists(scenario_path):
+            print(f"Scenario folder {scenario_path} not found. Skipping.")
+            continue
+        
+        # Get all network files sorted by step number
+        network_files = [f for f in os.listdir(scenario_path) if f.endswith('.inp')]
+        network_files.sort(key=lambda x: int(x.split('_')[1].split('.')[0]))
+        
+        if not network_files:
+            print(f"No network files found in {scenario_path}. Skipping.")
+            continue
+        
+        # analyse each network file
+        for file in network_files:
+            step = int(file.split('_')[1].split('.')[0])
+            file_path = os.path.join(scenario_path, file)
+            
+            try:
+                wn = wntr.network.WaterNetworkModel(file_path)
+                num_junctions = len(wn.junction_name_list)
+                num_pipes = len(wn.pipe_name_list)
+                
+                results.append({
+                    'scenario': scenario,
+                    'step': step,
+                    'junctions': num_junctions,
+                    'pipes': num_pipes,
+                    'network_type': scenario.split('_')[0],
+                    'growth_type': scenario.split('_')[1],
+                    'demand_scenario': scenario.split('_')[2]
+                })
+            except Exception as e:
+                print(f"Error analyzing {file_path}: {e}")
+    
+    # Convert results to dataframe
+    df = pd.DataFrame(results)
+    
+    if df.empty:
+        print("No data collected. Check that the network files exist.")
+        return
+    
+    # Create plots directory
+    plots_dir = os.path.join(os.path.dirname(base_path), "Evolution_Plots")
+    if not os.path.exists(plots_dir):
+        os.makedirs(plots_dir)
+    
+    # Plot evolution for each network type
+    network_types = df['network_type'].unique()
+    
+    for network in network_types:
+        network_df = df[df['network_type'] == network]
+        
+        # Create figure with two subplots
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10), sharex=True)
+        
+        # Plot junction evolution
+        sns.lineplot(
+            data=network_df, 
+            x='step', 
+            y='junctions', 
+            hue='scenario',
+            style='growth_type',
+            markers=True,
+            dashes=False,
+            ax=ax1
+        )
+        
+        ax1.set_title(f'{network.capitalize()} Network - Junction Evolution', fontsize=14)
+        ax1.set_ylabel('Number of Junctions', fontsize=12)
+        ax1.grid(True, linestyle='--', alpha=0.7)
+        ax1.xaxis.set_major_locator(MaxNLocator(integer=True))
+        
+        # Plot pipe evolution
+        sns.lineplot(
+            data=network_df, 
+            x='step', 
+            y='pipes', 
+            hue='scenario',
+            style='growth_type',
+            markers=True,
+            dashes=False,
+            ax=ax2
+        )
+        
+        ax2.set_title(f'{network.capitalize()} Network - Pipe Evolution', fontsize=14)
+        ax2.set_xlabel('Step', fontsize=12)
+        ax2.set_ylabel('Number of Pipes', fontsize=12)
+        ax2.grid(True, linestyle='--', alpha=0.7)
+        
+        # Adjust legend for readability
+        handles, labels = ax1.get_legend_handles_labels()
+        ax1.legend(handles=handles[1:], labels=labels[1:], title='Scenario', loc='upper left')
+        handles, labels = ax2.get_legend_handles_labels()
+        ax2.legend(handles=handles[1:], labels=labels[1:], title='Scenario', loc='upper left')
+        
+        plt.tight_layout()
+        plt.savefig(os.path.join(plots_dir, f"{network}_evolution.png"), dpi=300)
+        plt.close()
+    
+    # Create summary plots comparing sprawling vs densifying
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+    
+    # Junction growth by growth type
+    sns.lineplot(
+        data=df, 
+        x='step', 
+        y='junctions', 
+        hue='growth_type',
+        style='network_type',
+        markers=True,
+        ci='sd',
+        ax=ax1
+    )
+    
+    ax1.set_title('Junction Growth by Pattern', fontsize=14)
+    ax1.set_xlabel('Step', fontsize=12)
+    ax1.set_ylabel('Number of Junctions', fontsize=12)
+    ax1.grid(True, linestyle='--', alpha=0.7)
+    
+    # Pipe growth by growth type
+    sns.lineplot(
+        data=df, 
+        x='step', 
+        y='pipes', 
+        hue='growth_type',
+        style='network_type',
+        markers=True,
+        ci='sd',
+        ax=ax2
+    )
+    
+    ax2.set_title('Pipe Growth by Pattern', fontsize=14)
+    ax2.set_xlabel('Step', fontsize=12)
+    ax2.set_ylabel('Number of Pipes', fontsize=12)
+    ax2.grid(True, linestyle='--', alpha=0.7)
+    
+    plt.tight_layout()
+    plt.savefig(os.path.join(plots_dir, "growth_pattern_comparison.png"), dpi=300)
+    plt.close()
+    
+    print(f"Analysis complete. Plots saved to {plots_dir}")
+    
+    # Return the dataframe for further analysis if needed
+    return df
 
 def update_demands(prev_network, current_network, target_demand):
     """
@@ -438,3 +620,4 @@ if __name__ == "__main__":
             # Store the densifying networks in their scenario folder
             final_wn = deepcopy(start_wn)
             generate_transition_states(start_wn, final_wn, scenario, num_steps=50, net_save_path=scenario_path, plot_save_path=plot_scenario_path)
+    

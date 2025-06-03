@@ -396,7 +396,7 @@ def train_just_anytown():
 
     # Applying a low discount factor so the agent starts to prioritise short term rewwards more greatly
 
-    num_cpu = mp.cpu_count() # Only use half cores to avoid overloading simulation calls
+    num_cpu = mp.cpu_count()
     # num_cpu = 2  # For testing, use only 2 CPU cores
 
     # print(f"Number of CPU cores available: {num_cpu}")
@@ -493,7 +493,7 @@ def train_just_hanoi():
 
     start_time = time.time()
 
-    vec_env_hanoi = SubprocVecEnv([lambda: WNTRGymEnv(pipes, anytown_scenarios) for _ in range(num_cpu)])
+    vec_env_hanoi = SubprocVecEnv([lambda: WNTRGymEnv(pipes, anytown_scenarios) for _ in range(num_cpu)], start_method='spawn')
     # vec_env_hanoi = DummyVecEnv([lambda: WNTRGymEnv(pipes, hanoi_scenarios)])
     agent1 = GraphPPOAgent(vec_env_hanoi, pipes, **ppo_config)
     
@@ -682,7 +682,7 @@ if __name__ == "__main__":
     
     # train_just_anytown()
     # train_multiple()
-    # train_just_hanoi()
+    train_just_hanoi()
     # train_both()
 
     pipes_config = {
