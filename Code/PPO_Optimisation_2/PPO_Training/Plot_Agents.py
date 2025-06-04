@@ -146,7 +146,7 @@ def plot_training_and_performance(log_file="training_log.csv"): #
     plot_cols_fig2 = {
         (0,0): ('step_reward', 'Reward by Step', 'Reward', 50), # Added rolling window
         (0,1): ('cost_of_intervention', 'Cost of Intervention by Step', 'Cost', 50), # Added rolling window
-        (1,0): ('pressure_deficit', 'Pressure Deficit by Step', 'Pressure Deficit', 50), # Added rolling window
+        (1,0): ('pressure_deficit_raw', 'Pressure Deficit by Step', 'Pressure Deficit', 50), # Added rolling window
         (1,1): ('demand_satisfaction', 'Demand Satisfaction by Step', 'Demand Satisfaction (%)', 50) # Added rolling window
     }
 

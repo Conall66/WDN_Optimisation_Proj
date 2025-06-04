@@ -7,6 +7,7 @@ from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv
 import sys
 import os
+import matplotlib
 
 script = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(script)
@@ -79,7 +80,7 @@ def plot_performance_comparison(results: dict, save_path):
     durations = list(results.values())
 
     fig, ax = plt.subplots(figsize=(12, 7))
-    bars = ax.bar(labels, durations, color=['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728'])
+    bars = ax.bar(labels, durations, color= matplotlib.cm.magma(np.linspace(0, 1, len(labels))))
 
     ax.set_ylabel('Training Duration (seconds)')
     ax.set_title('Training Performance Comparison')

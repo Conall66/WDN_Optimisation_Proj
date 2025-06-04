@@ -70,42 +70,42 @@ def calculate_reward(
     # Extract cost ratio
 
     # Create a set of action to describe upgrading all pipes to the maximum diameter
-    max_diameter = max([pipes[pipe]['diameter'] for pipe in pipes])
-    next_largest = max([pipes[pipe]['diameter'] for pipe in pipes if pipes[pipe]['diameter'] < max_diameter])
+    # max_diameter = max([pipes[pipe]['diameter'] for pipe in pipes])
+    # next_largest = max([pipes[pipe]['diameter'] for pipe in pipes if pipes[pipe]['diameter'] < max_diameter])
 
-    print(f"Max diameter: {max_diameter}, Next largest diameter: {next_largest}")
+    # print(f"Max diameter: {max_diameter}, Next largest diameter: {next_largest}")
 
     # Extract pipe IDs from initial_pipes
-    initial_pipe_ids = [pipe_data.name for pipe, pipe_data in initial_pipes]
-    max_actions = [(pipe_id, max_diameter) for pipe_id in initial_pipe_ids]
+    # initial_pipe_ids = [pipe_data.name for pipe, pipe_data in initial_pipes]
+    # max_actions = [(pipe_id, max_diameter) for pipe_id in initial_pipe_ids]
 
     # Create a new list for corrected max actions
-    corrected_max_actions = []
+    # corrected_max_actions = []
     
-    # Check if pipes already have the maximum diameter and adjust accordingly
-    for i, (pipe_id, new_diameter) in enumerate(max_actions):
-        # Get the current diameter from original_pipe_diameters if available
-        if pipe_id in original_pipe_diameters:
-            current_diameter = original_pipe_diameters[pipe_id]
-        else:
-            # Otherwise get it from the current network
-            for pipe, pipe_data in initial_pipes:
-                if pipe_data.name == pipe_id:
-                    current_diameter = pipe_data.diameter
-                    break
+    # # Check if pipes already have the maximum diameter and adjust accordingly
+    # for i, (pipe_id, new_diameter) in enumerate(max_actions):
+    #     # Get the current diameter from original_pipe_diameters if available
+    #     if pipe_id in original_pipe_diameters:
+    #         current_diameter = original_pipe_diameters[pipe_id]
+    #     else:
+    #         # Otherwise get it from the current network
+    #         for pipe, pipe_data in initial_pipes:
+    #             if pipe_data.name == pipe_id:
+    #                 current_diameter = pipe_data.diameter
+    #                 break
         
-        # If the pipe already has the maximum diameter, use next largest instead
-        if current_diameter == max_diameter:
-            corrected_max_actions.append((pipe_id, next_largest))
-        else:
-            corrected_max_actions.append((pipe_id, max_diameter))
+    #     # If the pipe already has the maximum diameter, use next largest instead
+    #     if current_diameter == max_diameter:
+    #         corrected_max_actions.append((pipe_id, next_largest))
+    #     else:
+    #         corrected_max_actions.append((pipe_id, max_diameter))
     
-    max_actions = corrected_max_actions
+    # max_actions = corrected_max_actions
 
     print("-------------------------------------")
     print("Calculating cost given maximum actions...")
 
-    max_cost = compute_total_cost(initial_pipes, max_actions, labour_cost, energy_cost, pipes, original_pipe_diameters)
+    # max_cost = compute_total_cost(initial_pipes, max_actions, labour_cost, energy_cost, pipes, original_pipe_diameters)
 
     print("-------------------------------------")
     cost_ratio = max(1 - (cost / max_cost), 0) if max_cost > 0 else 0 # Where a cost of 1 is the best possible outcome
@@ -249,9 +249,9 @@ def reward_full_objective(performance_metrics: dict, cost: float, max_pd: float,
     # These weights are from your original `calculate_reward` function.
     reward_weights = [0.3, 0.4, 0.2] # Cost, PD, Demand
     
-    reward = (reward_weights[0] * cost_ratio) + \
+    reward = max(reward_weights[0] * cost_ratio) + \
              (reward_weights[1] * pd_ratio) + \
-             (reward_weights[2] * demand_satisfaction)
+             (reward_weights[2] * demand_satisfaction, 0) # Ensure reward is non-negative
 
     return reward, cost, pd_ratio, demand_satisfaction
 

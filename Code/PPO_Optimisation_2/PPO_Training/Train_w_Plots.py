@@ -94,7 +94,7 @@ def train_agent_with_monitoring(net_type = 'both', time_steps = 50000):
     
     return model_path, pipes, scenarios
 
-def evaluate_agent_by_scenario(model_path, pipes, scenarios, num_episodes_per_scenario=3):
+def evaluate_agent_by_scenario(model_path, pipes, scenarios, num_episodes_per_scenario=3, global_max_cost=2000000.0, global_max_pd=5000000.0):
     """
     Evaluates the trained agent for each scenario and collects the average rewards.
     """
@@ -109,8 +109,10 @@ def evaluate_agent_by_scenario(model_path, pipes, scenarios, num_episodes_per_sc
     #     )
     #      return env
     
-    eval_env = DummyVecEnv([lambda: WNTRGymEnv(pipes, scenarios)])
+    # eval_env = DummyVecEnv([lambda: WNTRGymEnv(pipes, scenarios)])
     # eval_env = SubprocVecEnv([]) # This line parallelises code
+    num_cpu = mp.cpu_count()
+    eval_env = SubprocVecEnv([lambda: WNTRGymEnv(pipes, scenarios, current_max_cost=global_max_cost, current_max_pd=global_max_pd) for _ in range(num_cpu)], start_method='spawn')
     
     agent = GraphPPOAgent(eval_env, pipes)
     agent.load(model_path)
@@ -424,7 +426,7 @@ def train_just_anytown():
     }
     ppo_config = {
         "learning_rate": 3e-4, "n_steps": 2048, "batch_size": 64, "n_epochs": 10,
-        "gamma": 0.8, "gae_lambda": 0.95, "clip_range": 0.2, "ent_coef": 0.01,
+        "gamma": 0.9, "gae_lambda": 0.95, "clip_range": 0.2, "ent_coef": 0.01,
         "vf_coef": 0.5, "max_grad_norm": 0.5, "verbose": 2
     }
 
@@ -435,7 +437,7 @@ def train_just_anytown():
 
     # print(f"Number of CPU cores available: {num_cpu}")
 
-    total_timesteps = 200000
+    total_timesteps = 500000
     all_scenarios = [
         'anytown_densifying_1', 'anytown_densifying_2', 'anytown_densifying_3', 'anytown_sprawling_1', 'anytown_sprawling_2', 'anytown_sprawling_3',
         'hanoi_densifying_1', 'hanoi_densifying_2', 'hanoi_densifying_3', 'hanoi_sprawling_1', 'hanoi_sprawling_2', 'hanoi_sprawling_3'
@@ -452,8 +454,8 @@ def train_just_anytown():
 
     start_time = time.time()
 
-    # vec_env_anytown = SubprocVecEnv([lambda: WNTRGymEnv(pipes, anytown_scenarios) for _ in range(num_cpu)])
-    vec_env_anytown = DummyVecEnv([lambda: WNTRGymEnv(pipes, anytown_scenarios)])
+    vec_env_anytown = SubprocVecEnv([lambda: WNTRGymEnv(pipes, anytown_scenarios) for _ in range(num_cpu)])
+    # vec_env_anytown = DummyVecEnv([lambda: WNTRGymEnv(pipes, anytown_scenarios)])
     agent1 = GraphPPOAgent(vec_env_anytown, pipes, **ppo_config)
     
     cb1 = PlottingCallback()
@@ -503,12 +505,12 @@ def train_just_hanoi():
         "vf_coef": 0.5, "max_grad_norm": 0.5, "verbose": 2
     }
 
-    # num_cpu = mp.cpu_count()
-    num_cpu = 4  # For testing, use only 2 CPU cores
+    num_cpu = mp.cpu_count() # Reserve one CPU core for other tasks
+    # num_cpu = 4  # For testing, use only 2 CPU cores
 
     # print(f"Number of CPU cores available: {num_cpu}")
 
-    total_timesteps = 200000
+    total_timesteps = 50000
     all_scenarios = [
         'anytown_densifying_1', 'anytown_densifying_2', 'anytown_densifying_3', 'anytown_sprawling_1', 'anytown_sprawling_2', 'anytown_sprawling_3',
         'hanoi_densifying_1', 'hanoi_densifying_2', 'hanoi_densifying_3', 'hanoi_sprawling_1', 'hanoi_sprawling_2', 'hanoi_sprawling_3'
@@ -589,7 +591,7 @@ def train_both():
 
     # print(f"Number of CPU cores available: {num_cpu}")
 
-    total_timesteps = 500000
+    total_timesteps = 5000000
     all_scenarios = [
         'anytown_densifying_1', 'anytown_densifying_2', 'anytown_densifying_3', 'anytown_sprawling_1', 'anytown_sprawling_2', 'anytown_sprawling_3',
         'hanoi_densifying_1', 'hanoi_densifying_2', 'hanoi_densifying_3', 'hanoi_sprawling_1', 'hanoi_sprawling_2', 'hanoi_sprawling_3'
@@ -718,7 +720,7 @@ def inspect_agent_actions(model_path: str, pipes: dict, scenarios: list, target_
 if __name__ == "__main__":
     # --- Overall Configuration ---
     
-    # train_just_anytown()
+    train_just_anytown()
     # train_multiple()
     train_just_hanoi()
     # train_both()
@@ -743,7 +745,7 @@ if __name__ == "__main__":
     # anytown_scenarios = [s for s in scenarios_list if 'anytown' in s]
     # hanoi_scenarios = [s for s in scenarios_list if 'hanoi' in s]
 
-    # saved_model_path = "agents/agent1_hanoi_only_20250603_064211"
+    # saved_model_path = "agents/agent1_hanoi_only_20250604_024249"
     
     # if os.path.exists(saved_model_path + ".zip"):
     # #      inspect_agent_actions(saved_model_path, pipes_config, scenarios_list, target_scenario_name='anytown_sprawling_2')
@@ -751,8 +753,9 @@ if __name__ == "__main__":
     #         model_path=saved_model_path,
     #         pipes_config=pipes_config,
     #         scenarios_list=hanoi_scenarios,
-    #         num_episodes_for_data=12,  # Number of episodes to average over
-    #         target_scenario_name='hanoi_sprawling_2'  # Specify the scenario to visualise
+    #         num_episodes_for_data=24,  # Number of episodes to average over
+    #         target_scenario_name='hanoi_sprawling_2',  # Specify the scenario to visualise
+    #         save_dir="Plots/Pipe_Diameter_Evolution/Hanoi_Agent_20250604_024249"
 
     #     )
     # else:

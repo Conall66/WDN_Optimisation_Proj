@@ -429,20 +429,29 @@ class WNTRGymEnv(gym.Env):
                 #         max_pd=self.current_max_pd, max_cost=self.current_max_cost
                 #     )
 
-                if self.reward_mode == 'minimise_pd': #
-                    # Ensure reward_minimise_pd can handle all kwargs or pass only what it needs
-                    reward_tuple = reward_minimise_pd(performance_metrics=metrics, cost=cost_of_intervention, max_pd=self.episode_max_pd)
-                elif self.reward_mode == 'pd_and_cost': #
-                    reward_tuple = reward_pd_and_cost(**reward_params)
-                elif self.reward_mode == 'full_objective': #
-                    reward_tuple = reward_full_objective(**reward_params)
-                else: # Fallback to original complex calculate_reward
-                    # This function needs to be checked if it's still used/compatible
-                    reward_tuple = calculate_reward( 
-                        self.current_network, self.original_diameters_this_timestep, self.actions_this_timestep,
-                        self.pipes, metrics, self.labour_cost, False, False, [],
-                        max_pd=self.episode_max_pd, max_cost=self.episode_max_cost
-                    ) 
+                # if self.reward_mode == 'minimise_pd': #
+                #     # Ensure reward_minimise_pd can handle all kwargs or pass only what it needs
+                #     reward_tuple = reward_minimise_pd(performance_metrics=metrics, cost=cost_of_intervention, max_pd=self.episode_max_pd)
+                # elif self.reward_mode == 'pd_and_cost': #
+                #     reward_tuple = reward_pd_and_cost(**reward_params)
+                # elif self.reward_mode == 'full_objective': #
+                #     reward_tuple = reward_full_objective(**reward_params)
+                # else: # Fallback to original complex calculate_reward
+                #     # This function needs to be checked if it's still used/compatible
+
+                reward_tuple = calculate_reward( 
+                    self.current_network, 
+                    self.original_diameters_this_timestep, 
+                    self.actions_this_timestep,
+                    self.pipes, 
+                    metrics, 
+                    self.labour_cost, 
+                    False, 
+                    False, 
+                    [],
+                    max_pd=self.current_max_pd, 
+                    max_cost=self.current_max_cost
+                ) 
                 
                 # reward, cost, pd_metric, demand_metric = reward_tuple
 
@@ -458,18 +467,23 @@ class WNTRGymEnv(gym.Env):
                 # }
                 # # --- END OF MODIFIED LOGIC ---
 
-                reward = reward_tuple[0] #
-                info = { #
+                reward = reward_tuple[0]
+                cost_val = reward_tuple[1]
+                pd_ratio_val = reward_tuple[2] # This is the normalized PD ratio
+                demand_satisfaction_val = reward_tuple[3]
+
+                info = {
                     'reward': reward,
-                    'cost_of_intervention': reward_tuple[1],
-                    'pressure_deficit_ratio': reward_tuple[2], # Ensure this index is correct for PD ratio
+                    'cost_of_intervention': cost_val,
+                    'pressure_deficit': pd_ratio_val,  # <--- MODIFICATION: Log pd_ratio under the key 'pressure_deficit'
                     'pressure_deficit_raw': metrics.get('total_pressure_deficit', 0.0),
-                    'demand_satisfaction': reward_tuple[3], # Ensure this index is correct
+                    'demand_satisfaction': demand_satisfaction_val,
                     'pipe_changes': len(self.actions_this_timestep),
+                    # Add other metrics from your budget implementation if they should be logged by PlottingCallback
                 }
 
             else: # Simulation failed
-                reward = -1.0
+                reward = 0.0
                 terminated = True #
                 info = {'error': 'Simulation failed'} #
             
