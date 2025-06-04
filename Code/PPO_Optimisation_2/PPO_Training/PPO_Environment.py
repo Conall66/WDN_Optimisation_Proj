@@ -32,9 +32,9 @@ class WNTRGymEnv(gym.Env):
             # Define max network size for padding. Adjust if your networks can be larger.
             max_nodes: int = 150,
             max_pipes: int = 200, # These parameters determine rollout buffer size
-            current_max_pd = 0.0,
-            current_max_cost = 0.0,
-            reward_mode: str = 'full_objective'  # Options: 'pd_only', 'cost_only', 'pd_and_cost', 'full_objective'
+            current_max_pd = 5000000.0, #HARD CODED ESTIMATES FOR TESTING
+            current_max_cost = 2000000.0, # HARD CODED ESTIMATES FOR TESTING
+            reward_mode: str = 'full_objective'  # Options: 'minimise_pd', 'pd_and_cost', 'full_objective'
             ):
         
         super(WNTRGymEnv, self).__init__()
@@ -83,6 +83,74 @@ class WNTRGymEnv(gym.Env):
 
             # ACTION MASK REMOVED
         })
+
+    def _calculate_episode_normalization_constants(self):
+        """
+        Calculates max_pd and max_cost for the initial state of the current episode's scenario.
+        This should be called once in reset() after the scenario and its Step_0.inp are known.
+        """
+        if not self.network_states:
+            print("Warning: Network states not loaded, cannot calculate episode normalization constants.")
+            self.current_max_pd = 100000.0  # High fallback
+            self.current_max_cost = 100000.0 # High fallback
+            return
+
+        initial_network_path_for_episode = self.network_states[0] # Based on Step_0.inp
+
+        # Calculate episode_max_pd
+        try:
+            # Load a fresh copy for this calculation
+            wn_for_pd_calc = wntr.network.WaterNetworkModel(initial_network_path_for_episode)
+            min_diameter = min(p_data['diameter'] for p_data in self.pipes.values())
+            for p_name in wn_for_pd_calc.pipe_name_list:
+                pipe = wn_for_pd_calc.get_link(p_name)
+                pipe.diameter = min_diameter
+            
+            # Use self.simulate_network as it handles errors and temp dirs
+            max_pd_results, _ = self.simulate_network(wn_for_pd_calc)
+            if max_pd_results:
+                max_pd_metrics = evaluate_network_performance(wn_for_pd_calc, max_pd_results) #
+                self.current_max_pd = max_pd_metrics.get('total_pressure_deficit', 1.0) 
+                if self.current_max_pd <= 0: self.current_max_pd = 1.0 # Avoid DivByZero or non-positive
+            else:
+                print(f"Warning: Simulation for max_pd failed for {self.current_scenario} Step 0. Using fallback.")
+                self.current_max_pd = 100000.0 # Fallback large value
+        except Exception as e:
+            print(f"ERROR during episode_max_pd calculation for {self.current_scenario} Step 0: {e}")
+            self.current_max_pd = 100000.0 
+
+        # Calculate episode_max_cost
+        try:
+            # Load a fresh copy for this calculation
+            wn_initial_for_episode = wntr.network.WaterNetworkModel(initial_network_path_for_episode)
+            max_diameter_opt = max(p_data['diameter'] for p_data in self.pipes.values())
+            
+            temp_orig_diams = {p_name: wn_initial_for_episode.get_link(p_name).diameter 
+                               for p_name in wn_initial_for_episode.pipe_name_list}
+            
+            max_actions_list = []
+            for p_name_mc in wn_initial_for_episode.pipe_name_list:
+                # Cost is for upgrading to max_diameter_opt regardless of current state for max_cost scenario
+                max_actions_list.append((p_name_mc, max_diameter_opt))
+
+            initial_results, initial_metrics = self.simulate_network(wn_initial_for_episode)
+            base_energy_cost = initial_metrics.get('total_pump_cost', 0.0) if initial_metrics else 0.0 #
+            
+            self.current_max_cost = compute_total_cost(
+                list(wn_initial_for_episode.pipes()), # Use list() for pipe iterator
+                max_actions_list,
+                self.labour_cost,
+                base_energy_cost, 
+                self.pipes,
+                temp_orig_diams
+            ) #
+            if self.current_max_cost <= 0: self.current_max_cost = 10000.0 # Avoid DivByZero or non-positive
+        except Exception as e:
+            print(f"ERROR during episode_max_cost calculation for {self.current_scenario} Step 0: {e}")
+            self.current_max_cost = 100000.0
+
+        print(f"  Episode Norm Constants for '{self.current_scenario}': max_pd={self.current_max_pd:.2f}, max_cost={self.current_max_cost:.2f}")
+
 
     def load_network_states(self, scenario: str) -> Dict[int, str]:
         scenario_path = os.path.join(self.networks_folder, scenario)
@@ -236,30 +304,30 @@ class WNTRGymEnv(gym.Env):
 
         self.original_diameters_this_timestep = {p: self.current_network.get_link(p).diameter for p in self.pipe_names}
 
-        try:
-            wn_copy_pd = wntr.network.WaterNetworkModel(network_path)
-            min_diameter = min(p['diameter'] for p in self.pipes.values())
-            for p_name in wn_copy_pd.pipe_name_list:
-                wn_copy_pd.get_link(p_name).diameter = min_diameter
-            max_pd_results, _ = self.simulate_network(wn_copy_pd)
-            if max_pd_results:
-                max_pd_metrics = evaluate_network_performance(wn_copy_pd, max_pd_results)
-                self.current_max_pd = max_pd_metrics.get('total_pressure_deficit', 0.0)
-        except Exception as e:
-            print(f"Warning: Failed to pre-calculate max_pd: {e}")
-            self.current_max_pd = 0.0
+        # try:
+        #     wn_copy_pd = wntr.network.WaterNetworkModel(network_path)
+        #     min_diameter = min(p['diameter'] for p in self.pipes.values())
+        #     for p_name in wn_copy_pd.pipe_name_list:
+        #         wn_copy_pd.get_link(p_name).diameter = min_diameter
+        #     max_pd_results, _ = self.simulate_network(wn_copy_pd)
+        #     if max_pd_results:
+        #         max_pd_metrics = evaluate_network_performance(wn_copy_pd, max_pd_results)
+        #         self.current_max_pd = max_pd_metrics.get('total_pressure_deficit', 0.0)
+        # except Exception as e:
+        #     print(f"Warning: Failed to pre-calculate max_pd: {e}")
+        #     self.current_max_pd = 0.0
 
-        try:
-            max_diameter = max(p['diameter'] for p in self.pipes.values())
-            max_actions = [(pipe_id, max_diameter) for pipe_id in self.pipe_names]
-            # Note: The energy_cost component will be based on the initial state, which is acceptable for a static ceiling.
-            _, initial_metrics = self.simulate_network(self.current_network)
-            initial_energy_cost = initial_metrics.get('total_pump_cost', 0.0) if initial_metrics else 0.0
+        # try:
+        #     max_diameter = max(p['diameter'] for p in self.pipes.values())
+        #     max_actions = [(pipe_id, max_diameter) for pipe_id in self.pipe_names]
+        #     # Note: The energy_cost component will be based on the initial state, which is acceptable for a static ceiling.
+        #     _, initial_metrics = self.simulate_network(self.current_network)
+        #     initial_energy_cost = initial_metrics.get('total_pump_cost', 0.0) if initial_metrics else 0.0
             
-            self.current_max_cost = compute_total_cost(list(self.current_network.pipes()), max_actions, self.labour_cost, initial_energy_cost, self.pipes, self.original_diameters_this_timestep)
-        except Exception as e:
-            print(f"Warning: Failed to pre-calculate max_cost: {e}")
-            self.current_max_cost = 0.0
+        #     self.current_max_cost = compute_total_cost(list(self.current_network.pipes()), max_actions, self.labour_cost, initial_energy_cost, self.pipes, self.original_diameters_this_timestep)
+        # except Exception as e:
+        #     print(f"Warning: Failed to pre-calculate max_cost: {e}")
+        #     self.current_max_cost = 0.0
         
         self.node_pressures = {}
         results, _ = self.simulate_network(self.current_network)
@@ -347,57 +415,84 @@ class WNTRGymEnv(gym.Env):
                 }
 
                 # Select the reward function based on the mode set during initialization.
-                if self.reward_mode == 'minimize_pd':
-                    reward_tuple = reward_minimise_pd(**reward_params)
-                elif self.reward_mode == 'pd_and_cost':
+                # if self.reward_mode == 'minimise_pd':
+                #     reward_tuple = reward_minimise_pd(**reward_params)
+                # elif self.reward_mode == 'pd_and_cost':
+                #     reward_tuple = reward_pd_and_cost(**reward_params)
+                # elif self.reward_mode == 'full_objective':
+                #     # This uses the new "full_objective" function, which is cleaner.
+                #     reward_tuple = reward_full_objective(**reward_params)
+                # else: # Fallback to the original complex function if needed
+                #     reward_tuple = calculate_reward(
+                #         self.current_network, self.original_diameters_this_timestep, self.actions_this_timestep,
+                #         self.pipes, metrics, self.labour_cost, False, False, [],
+                #         max_pd=self.current_max_pd, max_cost=self.current_max_cost
+                #     )
+
+                if self.reward_mode == 'minimise_pd': #
+                    # Ensure reward_minimise_pd can handle all kwargs or pass only what it needs
+                    reward_tuple = reward_minimise_pd(performance_metrics=metrics, cost=cost_of_intervention, max_pd=self.episode_max_pd)
+                elif self.reward_mode == 'pd_and_cost': #
                     reward_tuple = reward_pd_and_cost(**reward_params)
-                elif self.reward_mode == 'full_objective':
-                    # This uses the new "full_objective" function, which is cleaner.
+                elif self.reward_mode == 'full_objective': #
                     reward_tuple = reward_full_objective(**reward_params)
-                else: # Fallback to the original complex function if needed
-                    reward_tuple = calculate_reward(
+                else: # Fallback to original complex calculate_reward
+                    # This function needs to be checked if it's still used/compatible
+                    reward_tuple = calculate_reward( 
                         self.current_network, self.original_diameters_this_timestep, self.actions_this_timestep,
                         self.pipes, metrics, self.labour_cost, False, False, [],
-                        max_pd=self.current_max_pd, max_cost=self.current_max_cost
-                    )
+                        max_pd=self.episode_max_pd, max_cost=self.episode_max_cost
+                    ) 
                 
-                reward, cost, pd_metric, demand_metric = reward_tuple
+                # reward, cost, pd_metric, demand_metric = reward_tuple
+
+                # reward 
                 
-                info = {
+                # info = {
+                #     'reward': reward,
+                #     'cost_of_intervention': cost,
+                #     'pressure_deficit_ratio': pd_metric, # Log the normalized ratio
+                #     'pressure_deficit_raw': metrics.get('total_pressure_deficit', 0.0), # Also log raw value
+                #     'demand_satisfaction': demand_metric,
+                #     'pipe_changes': len(self.actions_this_timestep),
+                # }
+                # # --- END OF MODIFIED LOGIC ---
+
+                reward = reward_tuple[0] #
+                info = { #
                     'reward': reward,
-                    'cost_of_intervention': cost,
-                    'pressure_deficit_ratio': pd_metric, # Log the normalized ratio
-                    'pressure_deficit_raw': metrics.get('total_pressure_deficit', 0.0), # Also log raw value
-                    'demand_satisfaction': demand_metric,
+                    'cost_of_intervention': reward_tuple[1],
+                    'pressure_deficit_ratio': reward_tuple[2], # Ensure this index is correct for PD ratio
+                    'pressure_deficit_raw': metrics.get('total_pressure_deficit', 0.0),
+                    'demand_satisfaction': reward_tuple[3], # Ensure this index is correct
                     'pipe_changes': len(self.actions_this_timestep),
                 }
-                # --- END OF MODIFIED LOGIC ---
 
             else: # Simulation failed
-                # On critical failure, give a large negative reward and terminate.
-                reward = -500.0 # Large, consistent penalty for instability
-                terminated = True
-                info = {'error': 'Simulation failed'}
+                reward = -1.0
+                terminated = True #
+                info = {'error': 'Simulation failed'} #
             
-            # --- Reset for the next major timestep in the scenario ---
-
-            self.chosen_diameters_from_previous_step = {
+            self.chosen_diameters_from_previous_step = { #
                 p_name: self.current_network.get_link(p_name).diameter 
                 for p_name in self.pipe_names
             }
+            # Also store roughness if it can change and needs to persist
+            self.chosen_roughness_from_previous_step = {
+                 p_name: self.current_network.get_link(p_name).roughness
+                 for p_name in self.pipe_names
+            }
 
-            self.current_time_step += 1
-            self.current_pipe_index = 0
-            self.actions_this_timestep = []
+            self.current_time_step += 1 #
+            self.current_pipe_index = 0 #
+            self.actions_this_timestep = [] #
 
-            if self.current_time_step >= len(self.network_states) or not results:
-                terminated = True # End of episode
+            if self.current_time_step >= len(self.network_states) or not results: #
+                terminated = True #
             else:
-                self._load_network_for_timestep() # Load the next network state
+                self._load_network_for_timestep() #
         
-        # Get the observation for the current state (or next state)
-        obs = self.get_network_features()
-
+        obs = self.get_network_features() #
         return obs, reward, terminated, truncated, info
 
     def simulate_network(self, network: wntr.network.WaterNetworkModel):
@@ -431,5 +526,5 @@ class WNTRGymEnv(gym.Env):
         return mask
 
     def close(self):
-        shutil.rmtree(self.temp_dir)
+        # shutil.rmtree(self.temp_dir)
         pass

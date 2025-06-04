@@ -6,6 +6,7 @@ import os
 import datetime
 import matplotlib.pyplot as plt
 import tqdm
+import wntr
 
 from stable_baselines3.common.vec_env import SubprocVecEnv
 from stable_baselines3.common.vec_env import DummyVecEnv
@@ -15,6 +16,8 @@ from PPO_Environment import WNTRGymEnv
 from Actor_Critic_Nets2 import GraphPPOAgent
 from Plot_Agents import PlottingCallback, plot_training_and_performance, plot_action_analysis, plot_final_agent_rewards_by_scenario, plot_upgrades_per_timestep
 from Visualise_network import plot_pipe_diameters_heatmap_over_time
+from Hydraulic_Model import run_epanet_simulation, evaluate_network_performance
+from Reward import reward_minimise_pd, reward_pd_and_cost, reward_full_objective, calculate_reward, compute_total_cost
 
 def train_agent_with_monitoring(net_type = 'both', time_steps = 50000):
     """
@@ -241,6 +244,37 @@ def generate_and_save_plots(model_path, log_path, drl_results, random_results, p
         fig_actions.savefig(os.path.join(action_save_path, f"action_analysis_{model_timestamp}.png"))
         plt.close(fig_actions)
         print("  - Saved upgrade frequency plot.")
+
+def precalculate_global_normalization_constants(base_inp_path, pipes_config_dict, labour_cost_val):
+    # Logic to calculate max_pd (copied & adapted from PPO_Environment.py or GA_Alt_Approach.py)
+    wn_pd = wntr.network.WaterNetworkModel(base_inp_path)
+    min_diam = min(p['diameter'] for p in pipes_config_dict.values())
+    for pname in wn_pd.pipe_name_list: wn_pd.get_link(pname).diameter = min_diam
+    # results_pd, metrics_pd = run_epanet_simulation(wn_pd), evaluate_network_performance(wn_pd, run_epanet_simulation(wn_pd)[0]) if run_epanet_simulation(wn_pd)[0] else (None, None)
+
+    results_pd = run_epanet_simulation(wn_pd)
+    metrics_pd = evaluate_network_performance(wn_pd, results_pd) if results_pd else None
+
+    global_max_pd = metrics_pd.get('total_pressure_deficit', 1000000.0) if metrics_pd else 1000000.0
+    if global_max_pd <= 0: global_max_pd = 1.0
+
+    # Logic to calculate max_cost
+    wn_cost = wntr.network.WaterNetworkModel(base_inp_path)
+    max_diam_opt = max(p['diameter'] for p in pipes_config_dict.values())
+    orig_diams = {pname: wn_cost.get_link(pname).diameter for pname in wn_cost.pipe_name_list}
+    max_actions = [(pname, max_diam_opt) for pname in wn_cost.pipe_name_list]
+
+    # res_cost_init, met_cost_init = run_epanet_simulation(wn_cost), evaluate_network_performance(wn_cost, run_epanet_simulation(wn_cost)[0]) if run_epanet_simulation(wn_cost)[0] else (None, None)
+
+    res_cost_init = run_epanet_simulation(wn_cost)
+    met_cost_init = evaluate_network_performance(wn_cost, res_cost_init) if res_cost_init else None
+
+    energy_cost_base = met_cost_init.get('total_pump_cost', 0.0) if met_cost_init else 0.0
+    global_max_cost = compute_total_cost(list(wn_cost.pipes()), max_actions, labour_cost_val, energy_cost_base, pipes_config_dict, orig_diams)
+    if global_max_cost <= 0: global_max_cost = 1000000.0
+
+    print(f"Global Precalculated: max_pd={global_max_pd:.2f}, max_cost={global_max_cost:.2f}")
+    return global_max_pd, global_max_cost
 
 def train_multiple():
 
@@ -469,10 +503,8 @@ def train_just_hanoi():
         "vf_coef": 0.5, "max_grad_norm": 0.5, "verbose": 2
     }
 
-    # Applying a low discount factor so the agent starts to prioritise short term rewwards more greatly
-
-    num_cpu = mp.cpu_count()
-    # num_cpu = 2  # For testing, use only 2 CPU cores
+    # num_cpu = mp.cpu_count()
+    num_cpu = 4  # For testing, use only 2 CPU cores
 
     # print(f"Number of CPU cores available: {num_cpu}")
 
@@ -484,6 +516,12 @@ def train_just_hanoi():
     anytown_scenarios = [s for s in all_scenarios if 'anytown' in s]
     hanoi_scenarios = [s for s in all_scenarios if 'hanoi' in s]
 
+    # From the hanoi networks, pick one to determine input global max pressure and cost value
+    base_inp_path = "Modified_nets/hanoi-3.inp"
+    labour_cost_val = 100.0  # Example value, adjust as needed
+    global_max_pd, global_max_cost = precalculate_global_normalization_constants(base_inp_path, pipes, labour_cost_val)
+    print(f"Global Precalculated: max_pd={global_max_pd:.2f}, max_cost={global_max_cost:.2f}")
+
     # ===================================================================
     # --- AGENT 2: Hanoi Only ---
     # ===================================================================
@@ -493,7 +531,7 @@ def train_just_hanoi():
 
     start_time = time.time()
 
-    vec_env_hanoi = SubprocVecEnv([lambda: WNTRGymEnv(pipes, anytown_scenarios) for _ in range(num_cpu)], start_method='spawn')
+    vec_env_hanoi = SubprocVecEnv([lambda: WNTRGymEnv(pipes, hanoi_scenarios, current_max_cost=global_max_cost, current_max_pd=global_max_pd) for _ in range(num_cpu)], start_method='spawn')
     # vec_env_hanoi = DummyVecEnv([lambda: WNTRGymEnv(pipes, hanoi_scenarios)])
     agent1 = GraphPPOAgent(vec_env_hanoi, pipes, **ppo_config)
     
@@ -685,37 +723,37 @@ if __name__ == "__main__":
     train_just_hanoi()
     # train_both()
 
-    pipes_config = {
-        'Pipe_1': {'diameter': 0.3048, 'unit_cost': 36.58},
-        'Pipe_2': {'diameter': 0.4064, 'unit_cost': 56.32},
-        'Pipe_3': {'diameter': 0.5080, 'unit_cost': 78.71},
-        'Pipe_4': {'diameter': 0.6096, 'unit_cost': 103.47},
-        'Pipe_5': {'diameter': 0.7620, 'unit_cost': 144.60},
-        'Pipe_6': {'diameter': 1.0160, 'unit_cost': 222.62}
-    }
+    # pipes_config = {
+    #     'Pipe_1': {'diameter': 0.3048, 'unit_cost': 36.58},
+    #     'Pipe_2': {'diameter': 0.4064, 'unit_cost': 56.32},
+    #     'Pipe_3': {'diameter': 0.5080, 'unit_cost': 78.71},
+    #     'Pipe_4': {'diameter': 0.6096, 'unit_cost': 103.47},
+    #     'Pipe_5': {'diameter': 0.7620, 'unit_cost': 144.60},
+    #     'Pipe_6': {'diameter': 1.0160, 'unit_cost': 222.62}
+    # }
 
-    # Anytown scenarios
-    scenarios_list = [
-        'anytown_densifying_1', 'anytown_densifying_2', 'anytown_densifying_3',
-        'anytown_sprawling_1', 'anytown_sprawling_2', 'anytown_sprawling_3', 
-        'hanoi_densifying_1', 'hanoi_densifying_2', 'hanoi_densifying_3',
-        'hanoi_sprawling_1', 'hanoi_sprawling_2', 'hanoi_sprawling_3'
-    ]
+    # # Anytown scenarios
+    # scenarios_list = [
+    #     'anytown_densifying_1', 'anytown_densifying_2', 'anytown_densifying_3',
+    #     'anytown_sprawling_1', 'anytown_sprawling_2', 'anytown_sprawling_3', 
+    #     'hanoi_densifying_1', 'hanoi_densifying_2', 'hanoi_densifying_3',
+    #     'hanoi_sprawling_1', 'hanoi_sprawling_2', 'hanoi_sprawling_3'
+    # ]
 
-    anytown_scenarios = [s for s in scenarios_list if 'anytown' in s]
-    hanoi_scenarios = [s for s in scenarios_list if 'hanoi' in s]
+    # anytown_scenarios = [s for s in scenarios_list if 'anytown' in s]
+    # hanoi_scenarios = [s for s in scenarios_list if 'hanoi' in s]
 
-    saved_model_path = "agents/agent1_hanoi_only_20250603_064211"
+    # saved_model_path = "agents/agent1_hanoi_only_20250603_064211"
     
-    if os.path.exists(saved_model_path + ".zip"):
-    #      inspect_agent_actions(saved_model_path, pipes_config, scenarios_list, target_scenario_name='anytown_sprawling_2')
-        plot_pipe_diameters_heatmap_over_time(
-            model_path=saved_model_path,
-            pipes_config=pipes_config,
-            scenarios_list=hanoi_scenarios,
-            num_episodes_for_data=12,  # Number of episodes to average over
-            target_scenario_name='hanoi_sprawling_2'  # Specify the scenario to visualise
+    # if os.path.exists(saved_model_path + ".zip"):
+    # #      inspect_agent_actions(saved_model_path, pipes_config, scenarios_list, target_scenario_name='anytown_sprawling_2')
+    #     plot_pipe_diameters_heatmap_over_time(
+    #         model_path=saved_model_path,
+    #         pipes_config=pipes_config,
+    #         scenarios_list=hanoi_scenarios,
+    #         num_episodes_for_data=12,  # Number of episodes to average over
+    #         target_scenario_name='hanoi_sprawling_2'  # Specify the scenario to visualise
 
-        )
-    else:
-         print(f"Model path not found: {saved_model_path}.zip")
+    #     )
+    # else:
+    #      print(f"Model path not found: {saved_model_path}.zip")
