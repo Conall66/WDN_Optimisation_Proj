@@ -54,7 +54,7 @@ def calculate_reward(
 
     reward_weights = [0.3, # Cost ratio
                       0.4, # Pressure deficit ratio
-                      0.2, # Demand satisfaction ratio
+                      0.3, # Demand satisfaction ratio
                       ]
 
     initial_pipes = list(current_network.pipes())
@@ -102,8 +102,8 @@ def calculate_reward(
     
     # max_actions = corrected_max_actions
 
-    print("-------------------------------------")
-    print("Calculating cost given maximum actions...")
+    # print("-------------------------------------")
+    # print("Calculating cost given maximum actions...")
 
     # max_cost = compute_total_cost(initial_pipes, max_actions, labour_cost, energy_cost, pipes, original_pipe_diameters)
 

@@ -25,7 +25,7 @@ def run_experiment(run_id, config):
     print(f"\n[Run {run_id}] Starting config: {config}")
     model_path, pipes, scenarios = train_agent_with_monitoring(
         net_type='hanoi',
-        time_steps=50000
+        time_steps=16384
         # custom_config=config
     )
 
@@ -43,6 +43,7 @@ def run_experiment(run_id, config):
 def run_all_experiments():
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     results = []
+    mp.set_start_method('spawn', force=True)
     with mp.Pool(processes=mp.cpu_count()) as pool:
         args = [(i, config) for i, config in enumerate(configs)]
         for result in pool.starmap(run_experiment, args):

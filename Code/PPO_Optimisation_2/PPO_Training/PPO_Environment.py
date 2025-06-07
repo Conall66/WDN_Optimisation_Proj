@@ -34,7 +34,11 @@ class WNTRGymEnv(gym.Env):
             max_pipes: int = 200, # These parameters determine rollout buffer size
             current_max_pd = 5000000.0, #HARD CODED ESTIMATES FOR TESTING
             current_max_cost = 2000000.0, # HARD CODED ESTIMATES FOR TESTING
-            reward_mode: str = 'full_objective'  # Options: 'minimise_pd', 'pd_and_cost', 'full_objective'
+            reward_mode: str = 'full_objective',  # Options: 'minimise_pd', 'pd_and_cost', 'full_objective'
+            initial_budget_per_step: float = 100000.0,  # Example: Budget added each major step
+            start_of_episode_budget: float = 200000.0, # Example: Lump sum at episode start
+            budget_exceeded_penalty_type: str = "set_to_zero", # Options: "set_to_zero", "multiplicative"
+            budget_penalty_factor: float = 0.5 # Used if penalty_type is "multiplicative"
             ):
         
         super(WNTRGymEnv, self).__init__()
@@ -63,6 +67,13 @@ class WNTRGymEnv(gym.Env):
         self.original_diameters_this_timestep = {}
         self.chosen_diameters_from_previous_step = None
 
+        self.initial_budget_per_step = initial_budget_per_step
+        self.start_of_episode_budget = start_of_episode_budget
+        self.budget_exceeded_penalty_type = budget_exceeded_penalty_type
+        self.budget_penalty_factor = budget_penalty_factor
+        self.current_step_budget_available = 0.0 # Budget for the current major step decisions
+        # self.spent_on_interventions_this_step = 0.0 # This will be cost_of_intervention
+
         # pid = os.getpid()
         # self.temp_dir = f"wntr_temp_{pid}"
         # os.makedirs(self.temp_dir, exist_ok=True)
@@ -79,10 +90,48 @@ class WNTRGymEnv(gym.Env):
             # Edge connectivity: Shape is [2, num_edges]. We use max_pipes * 2 for bidirectional edges.
             "edge_index": spaces.Box(low=0, high=max_nodes, shape=(2, max_pipes * 2), dtype=np.int32),
             # Global features: [num_nodes, num_pipes, current_pipe_index]
-            "globals": spaces.Box(low=-np.inf, high=np.inf, shape=(3,), dtype=np.float32)
+            "globals": spaces.Box(low=-np.inf, high=np.inf, shape=(4,), dtype=np.float32)
 
             # ACTION MASK REMOVED
         })
+
+    def _initialize_episode_budget(self):
+        """Initializes or resets the budget at the start of a new episode."""
+        self.current_step_budget_available = self.start_of_episode_budget + self.initial_budget_per_step
+        print(f"  Episode Start: Initial budget for Step 0 allocated: {self.current_step_budget_available:.2f}")
+
+    def _apply_budget_penalty_and_update(self, cost_of_intervention: float, base_reward: float) -> Tuple[float, bool, float, float]:
+        """
+        Checks spending against budget, applies penalty to reward if exceeded,
+        and calculates budget for the next step.
+
+        Returns:
+            Tuple (penalised_reward, budget_exceeded_flag, budget_before_spending, carry_over_for_next_step)
+        """
+        budget_available_for_this_step = self.current_step_budget_available
+        penalised_reward = base_reward
+        budget_exceeded = False
+
+        if cost_of_intervention > budget_available_for_this_step:
+            budget_exceeded = True
+            if self.budget_exceeded_penalty_type == "set_to_zero":
+                penalised_reward = 0.0
+            elif self.budget_exceeded_penalty_type == "multiplicative":
+                penalised_reward *= self.budget_penalty_factor
+            
+            print(f"BUDGET EXCEEDED: Spent {cost_of_intervention:.2f} > Budget {budget_available_for_this_step:.2f}. Base Reward {base_reward:.2f} -> penalised Reward {penalised_reward:.2f}")
+        
+        unspent_budget = budget_available_for_this_step - cost_of_intervention
+        carry_over_budget = max(0.0, unspent_budget) # No negative carry-over (debt)
+
+        # Update budget for the *next* major time step
+        # This happens after the current step's actions and rewards are processed.
+        # The next call to step (for the next pipe) will use this new budget IF it's a new major step.
+        # This logic is better placed after current_time_step is incremented.
+        # For now, this method will return necessary info, and step() will finalize next step's budget.
+
+        return penalised_reward, budget_exceeded, budget_available_for_this_step, carry_over_budget
+
 
     def _calculate_episode_normalization_constants(self):
         """
@@ -107,7 +156,7 @@ class WNTRGymEnv(gym.Env):
                 pipe.diameter = min_diameter
             
             # Use self.simulate_network as it handles errors and temp dirs
-            max_pd_results, _ = self.simulate_network(wn_for_pd_calc)
+            max_pd_results, _, _ = self.simulate_network(wn_for_pd_calc)
             if max_pd_results:
                 max_pd_metrics = evaluate_network_performance(wn_for_pd_calc, max_pd_results) #
                 self.current_max_pd = max_pd_metrics.get('total_pressure_deficit', 1.0) 
@@ -133,7 +182,7 @@ class WNTRGymEnv(gym.Env):
                 # Cost is for upgrading to max_diameter_opt regardless of current state for max_cost scenario
                 max_actions_list.append((p_name_mc, max_diameter_opt))
 
-            initial_results, initial_metrics = self.simulate_network(wn_initial_for_episode)
+            initial_results, initial_metrics, sim_success = self.simulate_network(wn_initial_for_episode)
             base_energy_cost = initial_metrics.get('total_pump_cost', 0.0) if initial_metrics else 0.0 #
             
             self.current_max_cost = compute_total_cost(
@@ -218,9 +267,20 @@ class WNTRGymEnv(gym.Env):
             cols_to_copy = min(edge_index_tensor_gnn.shape[1], edge_index_array.shape[1])
             edge_index_array[:, :cols_to_copy] = edge_index_tensor_gnn[:, :cols_to_copy]
 
+        normalizing_denominator_for_budget = self.start_of_episode_budget + self.initial_budget_per_step
+        if normalizing_denominator_for_budget == 0: normalizing_denominator_for_budget = 1.0 # Avoid division by zero
+
+        normalized_budget = self.current_step_budget_available / normalizing_denominator_for_budget
+        # Clip to a reasonable range if desired, e.g., max 2.0 or 3.0 if budget can accumulate.
+        normalized_budget = min(normalized_budget, 5.0) # Example: Cap at 5x initial step budget
 
         # --- Extract Global Features ---
-        global_features = np.array([num_nodes, actual_num_pipes, self.current_pipe_index], dtype=np.float32)
+        global_features = np.array([
+            num_nodes, 
+            actual_num_pipes, 
+            self.current_pipe_index,
+            normalized_budget # MODIFIED: Add normalized budget
+            ], dtype=np.float32) #
 
         # --- Get the current action mask ---
         # This mask is crucial for MaskablePPO
@@ -242,13 +302,16 @@ class WNTRGymEnv(gym.Env):
             "nodes": np.zeros((self.max_nodes, 4), dtype=np.float32),
             "edges": np.zeros((self.max_pipes, 4), dtype=np.float32),
             "edge_index": np.zeros((2, self.max_pipes * 2), dtype=np.int32),
-            "globals": np.zeros((3,), dtype=np.float32),
+            "globals": np.zeros((4,), dtype=np.float32),
             # "action_mask": np.ones((self.action_space.n,), dtype=np.int8) # Default to all actions valid if obs is zeroed
         }
 
     def reset(self, seed: Optional[int] = None, options: Optional[dict] = None, scenario_name: Optional[str] = None) -> Tuple[Dict, Dict]:
 
         super().reset(seed=seed)
+
+        # self._initialize_episode_budget() # Initialize budget at the start of the episode
+        # self._calculate_episode_normalization_constants() # Sets self.episode_max_pd, self.episode_max_cost #
         
         # Add this logic to select the scenario
         if scenario_name and scenario_name in self.scenarios:
@@ -258,6 +321,9 @@ class WNTRGymEnv(gym.Env):
             self.current_scenario = self.np_random.choice(self.scenarios)
         
         self.network_states = self.load_network_states(self.current_scenario)
+
+        self._initialize_episode_budget() # Initialize budget at the start of the episode
+        self._calculate_episode_normalization_constants() # Sets self.episode_max_pd, self.episode_max_cost #
         
         self.current_time_step = 0
         self.current_pipe_index = 0
@@ -268,7 +334,13 @@ class WNTRGymEnv(gym.Env):
         self._load_network_for_timestep()
         
         obs = self.get_network_features()
-        info = {'scenario': self.current_scenario, 'time_step': 0, 'pipe_index': 0}
+        
+        info = { #
+            'scenario': self.current_scenario, 
+            'time_step': self.current_time_step, 
+            'pipe_index': self.current_pipe_index,
+            'current_budget_for_step': self.current_step_budget_available # Initial budget for Step 0
+        }
         
         return obs, info
 
@@ -303,34 +375,9 @@ class WNTRGymEnv(gym.Env):
                 # print(f"  Pipe {pipe_name}: roughness {original_roughness:.4f} -> {pipe.roughness:.4f}")
 
         self.original_diameters_this_timestep = {p: self.current_network.get_link(p).diameter for p in self.pipe_names}
-
-        # try:
-        #     wn_copy_pd = wntr.network.WaterNetworkModel(network_path)
-        #     min_diameter = min(p['diameter'] for p in self.pipes.values())
-        #     for p_name in wn_copy_pd.pipe_name_list:
-        #         wn_copy_pd.get_link(p_name).diameter = min_diameter
-        #     max_pd_results, _ = self.simulate_network(wn_copy_pd)
-        #     if max_pd_results:
-        #         max_pd_metrics = evaluate_network_performance(wn_copy_pd, max_pd_results)
-        #         self.current_max_pd = max_pd_metrics.get('total_pressure_deficit', 0.0)
-        # except Exception as e:
-        #     print(f"Warning: Failed to pre-calculate max_pd: {e}")
-        #     self.current_max_pd = 0.0
-
-        # try:
-        #     max_diameter = max(p['diameter'] for p in self.pipes.values())
-        #     max_actions = [(pipe_id, max_diameter) for pipe_id in self.pipe_names]
-        #     # Note: The energy_cost component will be based on the initial state, which is acceptable for a static ceiling.
-        #     _, initial_metrics = self.simulate_network(self.current_network)
-        #     initial_energy_cost = initial_metrics.get('total_pump_cost', 0.0) if initial_metrics else 0.0
-            
-        #     self.current_max_cost = compute_total_cost(list(self.current_network.pipes()), max_actions, self.labour_cost, initial_energy_cost, self.pipes, self.original_diameters_this_timestep)
-        # except Exception as e:
-        #     print(f"Warning: Failed to pre-calculate max_cost: {e}")
-        #     self.current_max_cost = 0.0
         
         self.node_pressures = {}
-        results, _ = self.simulate_network(self.current_network)
+        results, _, _ = self.simulate_network(self.current_network)
         if results:
             # Important: Sanitize the pressure results
             pressures = results.node['pressure']
@@ -373,7 +420,7 @@ class WNTRGymEnv(gym.Env):
                 self.actions_this_timestep.append((pipe_name, new_diameter))
                 action_is_valid_upgrade = True
 
-        # # If the chosen action was not a valid upgrade, the episode should be penalized
+        # # If the chosen action was not a valid upgrade, the episode should be penalised
         # if not action_is_valid_upgrade:
         #     # Penalize and end the episode immediately for taking an invalid action
 
@@ -389,7 +436,9 @@ class WNTRGymEnv(gym.Env):
         # --- Logic for when all pipes have been decided for the current network state ---
         if self.current_pipe_index >= len(self.pipe_names):
             # First, simulate the network with the agent's chosen actions
-            results, metrics = self.simulate_network(self.current_network)
+            results, metrics, sim_success = self.simulate_network(self.current_network)
+
+            print(f"INFO: Simulation for time step {self.current_time_step} completed. Success: {sim_success}")
             
             if results:
 
@@ -472,20 +521,37 @@ class WNTRGymEnv(gym.Env):
                 pd_ratio_val = reward_tuple[2] # This is the normalized PD ratio
                 demand_satisfaction_val = reward_tuple[3]
 
-                info = {
-                    'reward': reward,
-                    'cost_of_intervention': cost_val,
-                    'pressure_deficit': pd_ratio_val,  # <--- MODIFICATION: Log pd_ratio under the key 'pressure_deficit'
+                # Apply budget penalty and update budget tracking
+                final_reward_for_step, budget_exceeded, budget_at_start_of_step, carry_over = \
+                    self._apply_budget_penalty_and_update(cost_of_intervention, reward)
+                reward = final_reward_for_step # This is the reward agent gets for this major step
+
+                info = { #
+                    'reward': reward, 
+                    'cost_of_intervention': cost_of_intervention,
+                    'pressure_deficit': pd_ratio_val, # Using the modified key for plotting
                     'pressure_deficit_raw': metrics.get('total_pressure_deficit', 0.0),
-                    'demand_satisfaction': demand_satisfaction_val,
+                    'demand_satisfaction': demand_satisfaction_val, 
                     'pipe_changes': len(self.actions_this_timestep),
-                    # Add other metrics from your budget implementation if they should be logged by PlottingCallback
+                    'budget_before_step': budget_at_start_of_step,
+                    'budget_exceeded': budget_exceeded,
+                    'budget_carried_over': carry_over,
+                    'simulation_success': sim_success, # Indicate successful simulation
                 }
 
             else: # Simulation failed
-                reward = 0.0
+                # Use the reward from the previous modification for 0-1 range if applicable
+                reward = 0.0 # Default for failure if rewards are [0,1]
+                # If curriculum stage 1 ('minimize_pd') used raw -PD, penalty should be large negative
+                if self.reward_mode == 'minimise_pd' and not (0 <= reward_minimise_pd(metrics if metrics else {}, 0, self.episode_max_pd)[0] <=1):
+                     reward = -500.0 # Fallback to original large negative penalty
                 terminated = True #
-                info = {'error': 'Simulation failed'} #
+                info = { #
+                    'error': 'Simulation failed',
+                    'budget_before_step': self.current_step_budget_available, # Log budget even on failure
+                    'cost_of_intervention': 0, # No cost applied if sim failed
+                    'budget_exceeded': False
+                }
             
             self.chosen_diameters_from_previous_step = { #
                 p_name: self.current_network.get_link(p_name).diameter 
@@ -502,9 +568,18 @@ class WNTRGymEnv(gym.Env):
             self.actions_this_timestep = [] #
 
             if self.current_time_step >= len(self.network_states) or not results: #
-                terminated = True #
+                terminated = True 
             else:
-                self._load_network_for_timestep() #
+                # Budget for the *next* major step is replenished here
+                # This uses the carry_over from the completed step (if successful)
+                # or the budget_before_this_step if the simulation failed (cost_of_intervention would be 0)
+                if results: # Successful simulation, carry_over is valid
+                    self.current_step_budget_available = info['budget_carried_over'] + self.initial_budget_per_step
+                else: # Simulation failed, no spending occurred from budget_before_this_step
+                    self.current_step_budget_available = info['budget_before_step'] + self.initial_budget_per_step
+                
+                info['budget_for_next_step'] = self.current_step_budget_available
+                self._load_network_for_timestep() 
         
         obs = self.get_network_features() #
         return obs, reward, terminated, truncated, info
@@ -516,11 +591,13 @@ class WNTRGymEnv(gym.Env):
             if results.node['pressure'].isnull().values.any():
                 print(f"WARNING: NaN pressure values detected in scenario: {self.current_scenario}, time_step: {self.current_time_step}")
             metrics = evaluate_network_performance(network, results)
-            return results, metrics
+            sim_success = True
+            return results, metrics, sim_success
         except Exception as e:
             # Log the error with context
             print(f"ERROR: Simulation failed for scenario: {self.current_scenario}, time_step: {self.current_time_step}. Error: {e}")
-            return None, None
+            sim_success = False
+            return None, None, sim_success
             
     def get_action_mask(self) -> np.ndarray:
         mask = np.ones(self.action_space.n, dtype=bool)

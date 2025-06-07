@@ -152,8 +152,8 @@ class GNNFeatureExtractor(BaseFeaturesExtractor):
         node_input_dim = 4
         # Edge feature dimension: [diameter, length, roughness, is_current_pipe]
         edge_input_dim = 4
-        # Global feature dimension: [num_nodes, num_pipes, current_pipe_index]
-        global_input_dim = 3
+        # Global feature dimension: [num_nodes, num_pipes, current_pipe_index, budget]
+        global_input_dim = 4
         
         # Node embedding layers
         self.node_embedding = nn.Linear(node_input_dim, hidden_dim)
@@ -368,8 +368,8 @@ class GraphPPOAgent:
         self.pipes_config = pipes_config
         # self.graph_converter = WaterNetworkGraphConverter(pipes_config) # This is part of GNNFeatureExtractor now
 
-        # device = "cpu" # Force CPU for my training
-        device = "cuda" if torch.cuda.is_available() else "cpu"  # Use GPU if available, otherwise CPU
+        device = "cpu" # Force CPU for my training
+        # device = "cuda" if torch.cuda.is_available() else "cpu"  # Use GPU if available, otherwise CPU
         print(f"Using device: {device}")
         
         default_ppo_kwargs = {

@@ -18,6 +18,7 @@ from natsort import natsorted
 from PPO_Environment import WNTRGymEnv
 from Actor_Critic_Nets2 import GraphPPOAgent
 from stable_baselines3.common.vec_env import DummyVecEnv
+from stable_baselines3.common.vec_env import SubprocVecEnv
 
 from Hydraulic_Model import run_epanet_simulation, evaluate_network_performance
 
@@ -210,9 +211,10 @@ def visualise_demands(wn, title, save_path = None, show = False):
     return figure
 
 
-def visualise_network(wn, results, title, save_path, mode='2d', show=False, ax=None): # ADD ax=None
+def visualise_network(wn, results, title, save_path, mode='2d', show=False, ax=None, min_pressure=0):
     """
-    Visualise the water distribution network with pressure maps on a given axis.
+    Visualise the water distribution network with pressure deficit maps on junctions.
+    Reservoirs and tanks keep their standard colors, and pipes are labeled.
 
     Parameters:
     wn (wntr.network.WaterNetworkModel): The water network model.
@@ -222,130 +224,232 @@ def visualise_network(wn, results, title, save_path, mode='2d', show=False, ax=N
     mode (str): visualisation mode, either '2d' or '3d'.
     show (bool): Whether to display the plot.
     ax (matplotlib.axes.Axes, optional): The subplot axis to draw on. If None, a new figure is created.
+    min_pressure (float): Minimum acceptable pressure. Deficits are calculated relative to this value.
     """
     # Validate mode parameter
-    if mode.lower() not in ['2d', '3d']: #
+    if mode.lower() not in ['2d', '3d']:
         raise ValueError("Mode must be either '2d' or '3d'")
     
-    mode = mode.lower() #
+    mode = mode.lower()
     
-    # --- START OF MODIFIED SECTION for using provided 'ax' ---
     if ax is None:
         # If no axis is provided, create a new figure and axis
-        figure = plt.figure(figsize=(10, 10)) #
+        figure = plt.figure(figsize=(10, 10))
         if mode == '3d':
-            ax = figure.add_subplot(111, projection='3d') #
+            ax = figure.add_subplot(111, projection='3d')
         else:
-            ax = figure.add_subplot(111) #
+            ax = figure.add_subplot(111)
     else:
         # If an axis is provided, use it and get its parent figure
         figure = ax.get_figure()
-    # --- END OF MODIFIED SECTION ---
     
-    ax.set_title(title) #
-    ax.set_xlabel('X Coordinate') #
-    ax.set_ylabel('Y Coordinate') #
+    ax.set_title(title)
+    ax.set_xlabel('X Coordinate')
+    ax.set_ylabel('Y Coordinate')
     if mode == '3d':
-        ax.set_zlabel('Elevation (m)') #
+        ax.set_zlabel('Elevation (m)')
 
-    pos = wn.query_node_attribute('coordinates') #
+    pos = wn.query_node_attribute('coordinates')
 
-    if results:
-        pressures = results.node['pressure'].iloc[0].to_dict() #
-        pressure_norm = Normalize(vmin=np.min(list(pressures.values())), vmax=np.max(list(pressures.values()))) #
-        pressure_cmap = plt.get_cmap('magma') #
-        pressure_colors = {node: pressure_cmap(pressure_norm(value)) for node, value in pressures.items()} #
-        
-        pressure_sm = ScalarMappable(cmap=pressure_cmap, norm=pressure_norm) #
-        pressure_sm.set_array([]) #
-        
-        # Use figure.colorbar to attach to the correct figure when using subplots
-        cbar = figure.colorbar(pressure_sm, ax=ax, shrink=0.5, aspect=10) # Modified to use figure.colorbar
-        cbar.set_label('Pressure (m)') #
-        min_pressure = np.min(list(pressures.values())) #
-        max_pressure = np.max(list(pressures.values())) #
-        cbar.set_ticks([min_pressure, max_pressure]) #
-        cbar.set_ticklabels([f"{min_pressure:.2f}", f"{max_pressure:.2f}"]) #
-    else:
-        pressure_colors = {} #
-
+    # Standard node colors and markers
     node_markers = {
         'reservoir': 'o', 'tank': '^', 'junction': 's',
         'valve': 'D', 'pump': 'X'
-    } #
+    }
     node_colors = {
         'reservoir': 'blue', 'tank': 'green', 'junction': 'orange',
         'valve': 'purple', 'pump': 'red'
-    } #
-    legend_handles = [] #
-    legend_labels = [] #
+    }
 
-    for node_type_key, marker_symbol in node_markers.items(): #
-        node_list_attr = getattr(wn, f"{node_type_key}_name_list", []) #
-        for node_name_val in node_list_attr: #
-            if node_name_val in pos: #
-                color_val = pressure_colors.get(node_name_val, node_colors[node_type_key]) #
+    # Initialize pressure colors dictionary
+    pressure_colors = {}
+
+    if results:
+        # Get pressures from results
+        pressures = results.node['pressure'].iloc[0].to_dict() 
+        
+        # Calculate pressure deficits: max(0, min_pressure - actual_pressure)
+        pressure_deficits = {node: max(0, min_pressure - pressure) for node, pressure in pressures.items()}
+
+        print(f"Pressure Deficits: {pressure_deficits}")
+        
+        # Set up colormap for pressure deficits (only for junctions)
+        max_deficit = max(pressure_deficits.values())
+        
+        if max_deficit == 0:
+            # No deficits - use a simple solid color
+            pressure_deficit_norm = Normalize(vmin=0, vmax=1)
+            pressure_deficit_cmap = plt.get_cmap('RdYlGn_r')  # Just to have a colormap defined
+        else:
+            # Use a colormap ranging from green (no deficit) to red (maximum deficit)
+            pressure_deficit_norm = Normalize(vmin=0, vmax=max_deficit)
+            pressure_deficit_cmap = plt.get_cmap('RdYlGn_r')  # Red-Yellow-Green reversed
+        
+        # Apply pressure colors ONLY to junctions, keep standard colors for other node types
+        for node, deficit in pressure_deficits.items():
+            # Check if this is a junction
+            if node in wn.junction_name_list:
+                if max_deficit == 0:
+                    # No deficits - use a light green color for junctions
+                    pressure_colors[node] = 'lightgreen'
+                else:
+                    # Apply colormap for junction with deficit
+                    pressure_colors[node] = pressure_deficit_cmap(pressure_deficit_norm(deficit))
+        
+        # Create colorbar for pressure deficits
+        pressure_sm = ScalarMappable(cmap=pressure_deficit_cmap, norm=pressure_deficit_norm)
+        pressure_sm.set_array([])
+        
+        # Use figure.colorbar to attach to the correct figure when using subplots
+        cbar = figure.colorbar(pressure_sm, ax=ax, shrink=0.5, aspect=10)
+        cbar.set_label('Pressure Deficit (m)')
+        
+        # Set colorbar ticks appropriately
+        if max_deficit == 0:
+            cbar.set_ticks([0, 1])
+            cbar.set_ticklabels(["0.00 (No deficit)", "1.00 (Not used)"])
+        else:
+            cbar.set_ticks([0, max_deficit])
+            cbar.set_ticklabels([f"0.00", f"{max_deficit:.2f}"])
+
+    # Plot the nodes
+    legend_handles = []
+    legend_labels = []
+
+    for node_type_key, marker_symbol in node_markers.items():
+        node_list_attr = getattr(wn, f"{node_type_key}_name_list", [])
+        for node_name_val in node_list_attr:
+            if node_name_val in pos:
+                # Use pressure colors for junctions if available, otherwise standard color
+                if node_type_key == 'junction' and node_name_val in pressure_colors:
+                    color_val = pressure_colors[node_name_val]
+                else:
+                    # For reservoirs, tanks and other nodes, always use standard color
+                    color_val = node_colors[node_type_key]
+                
                 if mode == '3d':
                     scatter_obj = ax.scatter(
-                        pos[node_name_val][0], pos[node_name_val][1], get_node_elevation(wn, node_name_val), #
+                        pos[node_name_val][0], pos[node_name_val][1], get_node_elevation(wn, node_name_val),
                         marker=marker_symbol, color=color_val, s=100
-                    ) #
+                    )
                 else:
                     scatter_obj = ax.scatter(
-                        pos[node_name_val][0], pos[node_name_val][1], #
+                        pos[node_name_val][0], pos[node_name_val][1],
                         marker=marker_symbol, color=color_val, s=100
-                    ) #
-                if node_type_key.capitalize() not in legend_labels: #
-                    legend_handles.append(scatter_obj) #
-                    legend_labels.append(node_type_key.capitalize()) #
-
-    pipe_name_list_val = wn.pipe_name_list #
-    pipe_diameters_val = [wn.get_link(p_name).diameter for p_name in pipe_name_list_val] #
-    min_diam_val = min(pipe_diameters_val) if pipe_diameters_val else 0 #
-    max_diam_val = max(pipe_diameters_val) if pipe_diameters_val else 1 #
-    diam_range_val = max_diam_val - min_diam_val #
-
-    for p_name_val in pipe_name_list_val: #
-        pipe_obj_val = wn.get_link(p_name_val) #
-        start_node_name_val, end_node_name_val = pipe_obj_val.start_node_name, pipe_obj_val.end_node_name #
-        if start_node_name_val in pos and end_node_name_val in pos: #
-            start_pos_val, end_pos_val = pos[start_node_name_val], pos[end_node_name_val] #
-            start_elev_val, end_elev_val = get_node_elevation(wn, start_node_name_val), get_node_elevation(wn, end_node_name_val) #
-            diameter_val = pipe_obj_val.diameter #
-            width_val = 1 + 2 * ((diameter_val - min_diam_val) / diam_range_val) if diam_range_val != 0 else 1 #
-            if mode == '3d':
-                ax.plot([start_pos_val[0], end_pos_val[0]], [start_pos_val[1], end_pos_val[1]], [start_elev_val, end_elev_val], color='gray', linewidth=width_val) #
-            else:
-                ax.plot([start_pos_val[0], end_pos_val[0]], [start_pos_val[1], end_pos_val[1]], color='gray', linewidth=width_val) #
+                    )
                 
-    pump_line_obj = None #
-    for pump_name_val in wn.pump_name_list: #
-        pump_obj = wn.get_link(pump_name_val) #
-        start_node_name_val, end_node_name_val = pump_obj.start_node_name, pump_obj.end_node_name #
-        if start_node_name_val in pos and end_node_name_val in pos: #
-            start_pos_val, end_pos_val = pos[start_node_name_val], pos[end_node_name_val] #
-            start_elev_val, end_elev_val = get_node_elevation(wn, start_node_name_val), get_node_elevation(wn, end_node_name_val) #
-            if mode == '3d':
-                pump_line_obj = ax.plot([start_pos_val[0], end_pos_val[0]], [start_pos_val[1], end_pos_val[1]], [start_elev_val, end_elev_val], color='red', linewidth=2, linestyle='--', zorder=6)[0] #
-            else:
-                pump_line_obj = ax.plot([start_pos_val[0], end_pos_val[0]], [start_pos_val[1], end_pos_val[1]], color='red', linewidth=2, linestyle='--', zorder=6)[0] #
+                # Add node labels (optional - similar to your visualise_demands function)
+                ax.annotate(
+                    node_name_val,
+                    (pos[node_name_val][0], pos[node_name_val][1]),
+                    textcoords="offset points",
+                    xytext=(0, 5),
+                    ha='center',
+                    bbox=dict(facecolor='white', alpha=0.7, edgecolor='none')
+                )
+                
+                if node_type_key.capitalize() not in legend_labels:
+                    legend_handles.append(scatter_obj)
+                    legend_labels.append(node_type_key.capitalize())
 
-    if pump_line_obj is not None: #
-        legend_handles.append(pump_line_obj) #
-        legend_labels.append('Pump Connection') #
+    # Plot pipes with labels
+    pipe_name_list_val = wn.pipe_name_list
+    pipe_diameters_val = [wn.get_link(p_name).diameter for p_name in pipe_name_list_val]
+    min_diam_val = min(pipe_diameters_val) if pipe_diameters_val else 0
+    max_diam_val = max(pipe_diameters_val) if pipe_diameters_val else 1
+    diam_range_val = max_diam_val - min_diam_val
+
+    for p_name_val in pipe_name_list_val:
+        pipe_obj_val = wn.get_link(p_name_val)
+        start_node_name_val, end_node_name_val = pipe_obj_val.start_node_name, pipe_obj_val.end_node_name
+        
+        if start_node_name_val in pos and end_node_name_val in pos:
+            start_pos_val, end_pos_val = pos[start_node_name_val], pos[end_node_name_val]
+            start_elev_val, end_elev_val = get_node_elevation(wn, start_node_name_val), get_node_elevation(wn, end_node_name_val)
+            diameter_val = pipe_obj_val.diameter
+            width_val = 1 + 2 * ((diameter_val - min_diam_val) / diam_range_val) if diam_range_val != 0 else 1
+            
+            # Plot the pipe line
+            if mode == '3d':
+                ax.plot([start_pos_val[0], end_pos_val[0]], 
+                        [start_pos_val[1], end_pos_val[1]], 
+                        [start_elev_val, end_elev_val], 
+                        color='gray', 
+                        linewidth=width_val)
+            else:
+                ax.plot([start_pos_val[0], end_pos_val[0]], 
+                        [start_pos_val[1], end_pos_val[1]], 
+                        color='gray', 
+                        linewidth=width_val)
+            
+            # Add pipe label
+            # Calculate midpoint for label placement
+            mid_x = (start_pos_val[0] + end_pos_val[0]) / 2
+            mid_y = (start_pos_val[1] + end_pos_val[1]) / 2
+            
+            ax.annotate(
+                p_name_val,
+                (mid_x, mid_y),
+                textcoords="offset points",
+                xytext=(0, 5),
+                ha='center',
+                bbox=dict(facecolor='white', alpha=0.7, edgecolor='none')
+            )
+                
+    # Plot pumps
+    pump_line_obj = None
+    for pump_name_val in wn.pump_name_list:
+        pump_obj = wn.get_link(pump_name_val)
+        start_node_name_val, end_node_name_val = pump_obj.start_node_name, pump_obj.end_node_name
+        
+        if start_node_name_val in pos and end_node_name_val in pos:
+            start_pos_val, end_pos_val = pos[start_node_name_val], pos[end_node_name_val]
+            start_elev_val, end_elev_val = get_node_elevation(wn, start_node_name_val), get_node_elevation(wn, end_node_name_val)
+            
+            if mode == '3d':
+                pump_line_obj = ax.plot([start_pos_val[0], end_pos_val[0]], 
+                                       [start_pos_val[1], end_pos_val[1]], 
+                                       [start_elev_val, end_elev_val], 
+                                       color='red', 
+                                       linewidth=2, 
+                                       linestyle='--', 
+                                       zorder=6)[0]
+            else:
+                pump_line_obj = ax.plot([start_pos_val[0], end_pos_val[0]], 
+                                       [start_pos_val[1], end_pos_val[1]], 
+                                       color='red', 
+                                       linewidth=2, 
+                                       linestyle='--', 
+                                       zorder=6)[0]
+            
+            # Add pump label
+            mid_x = (start_pos_val[0] + end_pos_val[0]) / 2
+            mid_y = (start_pos_val[1] + end_pos_val[1]) / 2
+            ax.annotate(
+                pump_name_val,
+                (mid_x, mid_y),
+                textcoords="offset points",
+                xytext=(0, 5),
+                ha='center',
+                bbox=dict(facecolor='white', alpha=0.7, edgecolor='none')
+            )
+
+    if pump_line_obj is not None:
+        legend_handles.append(pump_line_obj)
+        legend_labels.append('Pump Connection')
 
     if mode == '3d':
-        ax.view_init(elev=30, azim=30) #
+        ax.view_init(elev=30, azim=30)
 
-    ax.legend(legend_handles, legend_labels, loc='upper right', fontsize=10) #
-    plt.tight_layout() #
+    ax.legend(legend_handles, legend_labels, loc='upper right', fontsize=10)
+    plt.tight_layout()
 
     if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight') #
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
     if show:
-        plt.show() #
+        plt.show()
     
-    return figure #
+    return figure
 
 def get_node_elevation(wn, node_name):
     """
@@ -710,12 +814,15 @@ def plot_pipe_diameters_heatmap_over_time(
         pipes=pipes_config, 
         scenarios=scenarios_list,
         # Pass the static estimates for normalization if you're using them
-        current_max_pd=5000.0, # Example value, ensure it matches your training
-        current_max_cost=2.5e7 # Example value
+        # current_max_pd=5000.0, # Example value, ensure it matches your training
+        # current_max_cost=2.5e7 # Example value
     )
     
     # Agent needs a VecEnv for its constructor, even if it's a Dummy one.
-    temp_vec_env = DummyVecEnv([lambda: WNTRGymEnv(pipes_config, scenarios_list)])
+    # temp_vec_env = DummyVecEnv([lambda: WNTRGymEnv(pipes_config, scenarios_list)])
+
+    temp_vec_env = SubprocVecEnv([lambda: WNTRGymEnv(pipes_config, scenarios_list)], start_method='spawn')
+
     agent = GraphPPOAgent(temp_vec_env, pipes_config=pipes_config)
     agent.load(model_path)
     temp_vec_env.close() # We'll use the 'env' instance directly.
@@ -858,8 +965,11 @@ if __name__ == "__main__":
     script_dir = os.path.dirname(__file__) #
     
     # Define paths to the INP files
-    hanoi_inp_path = os.path.join(script_dir, 'Initial_networks', 'exeter', 'hanoi-3.inp') #
-    anytown_inp_path = os.path.join(script_dir, 'Initial_networks', 'exeter', 'anytown-3.inp') #
+    # hanoi_inp_path = os.path.join(script_dir, 'Initial_networks', 'exeter', 'hanoi-3.inp') #
+    # anytown_inp_path = os.path.join(script_dir, 'Initial_networks', 'exeter', 'anytown-3.inp') #
+
+    hanoi_inp_path = os.path.join(script_dir, 'Modified_nets', 'hanoi-3.inp') #
+    anytown_inp_path = os.path.join(script_dir, 'Modified_nets', 'anytown-3.inp') #
 
     # Load the network models
     wn_hanoi = wntr.network.WaterNetworkModel(hanoi_inp_path) #
@@ -912,13 +1022,20 @@ if __name__ == "__main__":
         'hanoi_sprawling_1', 'hanoi_sprawling_2', 'hanoi_sprawling_3'
     ]
 
-    target_scenario_name = 'hanoi_densifying_3' # Example scenario to visualize
-    num_episodes_for_data = 4 # For a single representative run, use 1
-    plot_pipe_diameters_heatmap_over_time(
-        model_path=model_path,
-        pipes_config=pipes_config,
-        scenarios_list=scenarios_list,
-        target_scenario_name=target_scenario_name,
-        num_episodes_for_data=num_episodes_for_data,
-        save_dir=os.path.join(script_dir, 'Plots', 'Pipe_Diameter_Evolution')
-    )
+    # target_scenario_name = 'hanoi_densifying_3' # Example scenario to visualize
+    # num_episodes_for_data = 4 # For a single representative run, use 1
+    # plot_pipe_diameters_heatmap_over_time(
+    #     model_path=model_path,
+    #     pipes_config=pipes_config,
+    #     scenarios_list=scenarios_list,
+    #     target_scenario_name=target_scenario_name,
+    #     num_episodes_for_data=num_episodes_for_data,
+    #     save_dir=os.path.join(script_dir, 'Plots', 'Pipe_Diameter_Evolution')
+    # )
+
+    # Plot the pressure visualisation for both networks but with pressure deficit
+    visualise_network(wn_hanoi, results_hanoi, "Hanoi Network with Pressure Deficit", 
+                      save_path=os.path.join(script, 'Plots', 'Hanoi_net_pressure_deficit.png'), mode='2d', show=True)
+    visualise_network(wn_anytown, results_anytown, "Anytown Network with Pressure Deficit",
+                      save_path=os.path.join(script, 'Plots', 'Anytown_net_pressure_deficit.png'), mode='2d', show=True)
+

@@ -14,7 +14,7 @@ from stable_baselines3.common.vec_env import DummyVecEnv
 # Import your existing modules
 from PPO_Environment import WNTRGymEnv
 from Actor_Critic_Nets2 import GraphPPOAgent
-from Plot_Agents import PlottingCallback, plot_training_and_performance, plot_action_analysis, plot_final_agent_rewards_by_scenario, plot_upgrades_per_timestep
+from Plot_Agents import PlottingCallback, plot_training_and_performance, plot_action_analysis, plot_final_agent_rewards_by_scenario, plot_upgrades_per_timestep, plot_simulation_errors_against_reward
 from Visualise_network import plot_pipe_diameters_heatmap_over_time
 from Hydraulic_Model import run_epanet_simulation, evaluate_network_performance
 from Reward import reward_minimise_pd, reward_pd_and_cost, reward_full_objective, calculate_reward, compute_total_cost
@@ -62,7 +62,7 @@ def train_agent_with_monitoring(net_type = 'both', time_steps = 50000):
         return env
 
     num_cpu = mp.cpu_count()
-    vec_env = SubprocVecEnv([make_env for _ in range(num_cpu)]) # This line parallelises code
+    # vec_env = SubprocVecEnv([make_env for _ in range(num_cpu)]) # This line parallelises code
     vec_env = DummyVecEnv([make_env])
     
     ppo_config = {
@@ -100,19 +100,43 @@ def evaluate_agent_by_scenario(model_path, pipes, scenarios, num_episodes_per_sc
     """
     print(f"\nEvaluating DRL agent from {os.path.basename(model_path)}...")
 
-    # def make_eval_env():
-    #      env = SimpleWNTRGymEnv(
-    #         pipes_config=PIPES_CONFIG,
-    #         target_scenario_name=TARGET_SCENARIO_NAME, # Crucially, evaluate on the same scenario
-    #         networks_folder=NETWORKS_FOLDER_PATH,
-    #         labour_cost_per_meter=LABOUR_COST_PER_METER
+    # Create a single-process environment for more predictable debugging
+    # eval_env = SubprocVecEnv([
+    #     lambda: WNTRGymEnv(
+    #         pipes, 
+    #         scenarios, 
+    #         current_max_cost=global_max_cost,   # Pass normalization constants explicitly
+    #         current_max_pd=global_max_pd,
+    #         # Include budget parameters to match training
+    #         initial_budget_per_step=500000.0,
+    #         start_of_episode_budget=1000000.0,
+    #         budget_exceeded_penalty_type='multiplicative',
+    #         budget_penalty_factor=0.1
     #     )
-    #      return env
-    
-    # eval_env = DummyVecEnv([lambda: WNTRGymEnv(pipes, scenarios)])
-    # eval_env = SubprocVecEnv([]) # This line parallelises code
-    num_cpu = mp.cpu_count()
-    eval_env = SubprocVecEnv([lambda: WNTRGymEnv(pipes, scenarios, current_max_cost=global_max_cost, current_max_pd=global_max_pd) for _ in range(num_cpu)], start_method='spawn')
+    # ], start_method='spawn')
+
+    # if scenarios includes 'anytown', set the initial budget and start of epsiode budget
+
+    if 'hanoi' in scenarios:
+        initial_budget = 1000000.0
+        budget_per_step = 500000.0
+    else:
+        initial_budget = 2000000.0
+        budget_per_step = 1000000.0  
+
+    eval_env = DummyVecEnv([
+        lambda: WNTRGymEnv(
+            pipes, 
+            scenarios, 
+            current_max_cost=global_max_cost,   # Pass normalization constants explicitly
+            current_max_pd=global_max_pd,
+            # Include budget parameters to match training
+            initial_budget_per_step=budget_per_step,
+            start_of_episode_budget=initial_budget,
+            budget_exceeded_penalty_type='multiplicative',
+            budget_penalty_factor=0.5
+        )
+    ])
     
     agent = GraphPPOAgent(eval_env, pipes)
     agent.load(model_path)
@@ -197,10 +221,12 @@ def generate_and_save_plots(model_path, log_path, drl_results, random_results, p
     perf_save_path = os.path.join(plots_dir, "Training_and_Performance")
     action_save_path = os.path.join(plots_dir, "Action_Analysis")
     scenario_save_path = os.path.join(plots_dir, "Reward_by_Scenario")
+    sim_failures_save_path = os.path.join(plots_dir, "Simulation_Failures")
     
     os.makedirs(perf_save_path, exist_ok=True)
     os.makedirs(action_save_path, exist_ok=True)
     os.makedirs(scenario_save_path, exist_ok=True)
+    os.makedirs(sim_failures_save_path, exist_ok=True)
 
     # Plot 1 & 2: Training and Step-wise Performance
     figs_performance = plot_training_and_performance(log_path)
@@ -247,6 +273,10 @@ def generate_and_save_plots(model_path, log_path, drl_results, random_results, p
         plt.close(fig_actions)
         print("  - Saved upgrade frequency plot.")
 
+    # Plot 6: Simulationm Failures and Reward against Time step
+    print("  - Generating simulation failures and reward plot...")
+    plot_simulation_errors_against_reward(log_path, save_path=sim_failures_save_path)
+    
 def precalculate_global_normalization_constants(base_inp_path, pipes_config_dict, labour_cost_val):
     # Logic to calculate max_pd (copied & adapted from PPO_Environment.py or GA_Alt_Approach.py)
     wn_pd = wntr.network.WaterNetworkModel(base_inp_path)
@@ -416,6 +446,7 @@ def train_multiple():
     print("="*60)
 
 def train_just_anytown():
+
     pipes = {
         'Pipe_1': {'diameter': 0.3048, 'unit_cost': 36.58},
         'Pipe_2': {'diameter': 0.4064, 'unit_cost': 56.32},
@@ -426,18 +457,16 @@ def train_just_anytown():
     }
     ppo_config = {
         "learning_rate": 3e-4, "n_steps": 2048, "batch_size": 64, "n_epochs": 10,
-        "gamma": 0.9, "gae_lambda": 0.95, "clip_range": 0.2, "ent_coef": 0.01,
+        "gamma": 0.8, "gae_lambda": 0.95, "clip_range": 0.2, "ent_coef": 0.01,
         "vf_coef": 0.5, "max_grad_norm": 0.5, "verbose": 2
     }
 
-    # Applying a low discount factor so the agent starts to prioritise short term rewwards more greatly
-
-    num_cpu = mp.cpu_count()
-    # num_cpu = 2  # For testing, use only 2 CPU cores
+    num_cpu = mp.cpu_count() # Reserve one CPU core for other tasks
+    # num_cpu = 4  # For testing, use only 2 CPU cores
 
     # print(f"Number of CPU cores available: {num_cpu}")
 
-    total_timesteps = 500000
+    total_timesteps = 49000 # Short run through to check functionality
     all_scenarios = [
         'anytown_densifying_1', 'anytown_densifying_2', 'anytown_densifying_3', 'anytown_sprawling_1', 'anytown_sprawling_2', 'anytown_sprawling_3',
         'hanoi_densifying_1', 'hanoi_densifying_2', 'hanoi_densifying_3', 'hanoi_sprawling_1', 'hanoi_sprawling_2', 'hanoi_sprawling_3'
@@ -445,8 +474,20 @@ def train_just_anytown():
     anytown_scenarios = [s for s in all_scenarios if 'anytown' in s]
     hanoi_scenarios = [s for s in all_scenarios if 'hanoi' in s]
 
+    # From the anytown networks, pick one to determine input global max pressure and cost value
+    base_inp_path = "Modified_nets/anytown-3.inp"
+    labour_cost_val = 100.0  # Example value, adjust as needed
+    global_max_pd, global_max_cost = precalculate_global_normalization_constants(base_inp_path, pipes, labour_cost_val)
+    print(f"Global Precalculated: max_pd={global_max_pd:.2f}, max_cost={global_max_cost:.2f}")
+
+    # Budget values
+    initial_budget = 10000000.0
+    budget_per_step = 5000000.0 # Larger budgets needed for the anytown network
+    budget_penalty_type = 'multiplicative'
+    budget_penalty_factor = 0.5 # THIS MULTIPLIES THE REWARD BY THIS FACTOR IF THE BUDGET IS EXCEEDED
+
     # ===================================================================
-    # --- AGENT 1: Anytown Only ---
+    # --- AGENT 2: Anytown Only ---
     # ===================================================================
     print("\n" + "="*60)
     print("### AGENT 1: TRAINING ON ANYTOWN ONLY ###")
@@ -454,7 +495,12 @@ def train_just_anytown():
 
     start_time = time.time()
 
-    vec_env_anytown = SubprocVecEnv([lambda: WNTRGymEnv(pipes, anytown_scenarios) for _ in range(num_cpu)])
+    vec_env_anytown = SubprocVecEnv([lambda: WNTRGymEnv(pipes, 
+                                                      anytown_scenarios, current_max_cost=global_max_cost, current_max_pd=global_max_pd, 
+                                                      initial_budget_per_step=budget_per_step,
+                                                      start_of_episode_budget=initial_budget,
+                                                      budget_exceeded_penalty_type=budget_penalty_type,
+                                                      budget_penalty_factor = budget_penalty_factor) for _ in range(num_cpu)], start_method='spawn')
     # vec_env_anytown = DummyVecEnv([lambda: WNTRGymEnv(pipes, anytown_scenarios)])
     agent1 = GraphPPOAgent(vec_env_anytown, pipes, **ppo_config)
     
@@ -489,7 +535,8 @@ def train_just_anytown():
     print("### TRAINING COMPLETE ###")
     print("="*60)
 
-def train_just_hanoi():
+
+def train_just_hanoi(single_scenario = False):
 
     pipes = {
         'Pipe_1': {'diameter': 0.3048, 'unit_cost': 36.58},
@@ -505,12 +552,14 @@ def train_just_hanoi():
         "vf_coef": 0.5, "max_grad_norm": 0.5, "verbose": 2
     }
 
+    """Lowering the gamma value encourages the model to make short term decisions, and is less likely then to violate the budget constraint. This comes at the expense then of designing a mor reslient network."""
+
     num_cpu = mp.cpu_count() # Reserve one CPU core for other tasks
     # num_cpu = 4  # For testing, use only 2 CPU cores
 
     # print(f"Number of CPU cores available: {num_cpu}")
 
-    total_timesteps = 50000
+    total_timesteps = 49000 # Short run through to check functionality
     all_scenarios = [
         'anytown_densifying_1', 'anytown_densifying_2', 'anytown_densifying_3', 'anytown_sprawling_1', 'anytown_sprawling_2', 'anytown_sprawling_3',
         'hanoi_densifying_1', 'hanoi_densifying_2', 'hanoi_densifying_3', 'hanoi_sprawling_1', 'hanoi_sprawling_2', 'hanoi_sprawling_3'
@@ -518,11 +567,23 @@ def train_just_hanoi():
     anytown_scenarios = [s for s in all_scenarios if 'anytown' in s]
     hanoi_scenarios = [s for s in all_scenarios if 'hanoi' in s]
 
+    if single_scenario:
+        hanoi_scenarios = ['hanoi_sprawling_1']
+
     # From the hanoi networks, pick one to determine input global max pressure and cost value
     base_inp_path = "Modified_nets/hanoi-3.inp"
     labour_cost_val = 100.0  # Example value, adjust as needed
-    global_max_pd, global_max_cost = precalculate_global_normalization_constants(base_inp_path, pipes, labour_cost_val)
+    # global_max_pd, global_max_cost = precalculate_global_normalization_constants(base_inp_path, pipes, labour_cost_val)
+
+    global_max_pd, global_max_cost = 5000000.0, 2000000.0 # Hardcoded for now, as the precalculation is not working correctly
+
     print(f"Global Precalculated: max_pd={global_max_pd:.2f}, max_cost={global_max_cost:.2f}")
+
+    # Budget values
+    initial_budget = 1000000.0  # Example initial budget
+    budget_per_step = 500000.0  # Example budget increment per step
+    budget_penalty_type = 'multiplicative'
+    budget_penalty_factor = 0.5 # THIS MULTIPLIES THE REWARD BY THIS FACTOR IF THE BUDGET IS EXCEEDED
 
     # ===================================================================
     # --- AGENT 2: Hanoi Only ---
@@ -533,8 +594,20 @@ def train_just_hanoi():
 
     start_time = time.time()
 
-    vec_env_hanoi = SubprocVecEnv([lambda: WNTRGymEnv(pipes, hanoi_scenarios, current_max_cost=global_max_cost, current_max_pd=global_max_pd) for _ in range(num_cpu)], start_method='spawn')
-    # vec_env_hanoi = DummyVecEnv([lambda: WNTRGymEnv(pipes, hanoi_scenarios)])
+    vec_env_hanoi = SubprocVecEnv([lambda: WNTRGymEnv(pipes, 
+                                                      hanoi_scenarios, current_max_cost=global_max_cost, current_max_pd=global_max_pd, 
+                                                      initial_budget_per_step=budget_per_step,
+                                                      start_of_episode_budget=initial_budget,
+                                                      budget_exceeded_penalty_type=budget_penalty_type,
+                                                      budget_penalty_factor = budget_penalty_factor) for _ in range(num_cpu)], start_method='spawn')
+
+    # vec_env_hanoi = DummyVecEnv([lambda: WNTRGymEnv(pipes, 
+    #                                                   hanoi_scenarios, current_max_cost=global_max_cost, current_max_pd=global_max_pd, 
+    #                                                   initial_budget_per_step=budget_per_step,
+    #                                                   start_of_episode_budget=initial_budget,
+    #                                                   budget_exceeded_penalty_type=budget_penalty_type,
+    #                                                   budget_penalty_factor = budget_penalty_factor)])
+
     agent1 = GraphPPOAgent(vec_env_hanoi, pipes, **ppo_config)
     
     cb1 = PlottingCallback()
@@ -557,9 +630,9 @@ def train_just_hanoi():
     # vec_env_anytown.close()
 
     print(f"Agent 1 training complete. Model: {model_path1}, Log: {log_path1}")
-    drl1_results = evaluate_agent_by_scenario(model_path1, pipes, anytown_scenarios)
-    rand1_results = evaluate_random_policy_by_scenario(pipes, anytown_scenarios)
-    generate_and_save_plots(model_path1, log_path1, drl1_results, rand1_results, pipes, anytown_scenarios)
+    drl1_results = evaluate_agent_by_scenario(model_path1, pipes, hanoi_scenarios)
+    rand1_results = evaluate_random_policy_by_scenario(pipes, hanoi_scenarios)
+    generate_and_save_plots(model_path1, log_path1, drl1_results, rand1_results, pipes, hanoi_scenarios)
 
     training_time = time.time() - start_time
 
@@ -580,24 +653,39 @@ def train_both():
     }
     ppo_config = {
         "learning_rate": 3e-4, "n_steps": 2048, "batch_size": 64, "n_epochs": 10,
-        "gamma": 0.9, "gae_lambda": 0.95, "clip_range": 0.2, "ent_coef": 0.01,
+        "gamma": 0.8, "gae_lambda": 0.95, "clip_range": 0.2, "ent_coef": 0.01,
         "vf_coef": 0.5, "max_grad_norm": 0.5, "verbose": 2
     }
 
-    # Applying a low discount factor so the agent starts to prioritise short term rewwards more greatly
+    """Lowering the gamma value encourages the model to make short term decisions, and is less likely then to violate the budget constraint. This comes at the expense then of designing a mor reslient network."""
 
-    num_cpu = mp.cpu_count()
-    # num_cpu = 2  # For testing, use only 2 CPU cores
+    num_cpu = mp.cpu_count() # Reserve one CPU core for other tasks
+    # num_cpu = 4  # For testing, use only 2 CPU cores
 
     # print(f"Number of CPU cores available: {num_cpu}")
 
-    total_timesteps = 5000000
+    total_timesteps = 49000 # Short run through to check functionality
     all_scenarios = [
         'anytown_densifying_1', 'anytown_densifying_2', 'anytown_densifying_3', 'anytown_sprawling_1', 'anytown_sprawling_2', 'anytown_sprawling_3',
         'hanoi_densifying_1', 'hanoi_densifying_2', 'hanoi_densifying_3', 'hanoi_sprawling_1', 'hanoi_sprawling_2', 'hanoi_sprawling_3'
     ]
     anytown_scenarios = [s for s in all_scenarios if 'anytown' in s]
     hanoi_scenarios = [s for s in all_scenarios if 'hanoi' in s]
+
+    # From the hanoi networks, pick one to determine input global max pressure and cost value
+    base_inp_path = "Modified_nets/hanoi-3.inp"
+    labour_cost_val = 100.0  # Example value, adjust as needed
+    global_max_pd, global_max_cost = precalculate_global_normalization_constants(base_inp_path, pipes, labour_cost_val)
+
+    # global_max_pd, global_max_cost = 5000000.0, 2000000.0 # Hardcoded for now, as the precalculation is not working correctly
+
+    print(f"Global Precalculated: max_pd={global_max_pd:.2f}, max_cost={global_max_cost:.2f}")
+
+    # Budget values
+    initial_budget = 20000000.0  # Example initial budget
+    budget_per_step = 1000000.0  # Example budget increment per step
+    budget_penalty_type = 'multiplicative'
+    budget_penalty_factor = 0.5 # THIS MULTIPLIES THE REWARD BY THIS FACTOR IF THE BUDGET IS EXCEEDED
 
     # ===================================================================
     # --- AGENT 3: Both ---
@@ -609,15 +697,21 @@ def train_both():
     start_time = time.time()
 
     # vec_env_both = SubprocVecEnv([lambda: WNTRGymEnv(pipes, all_scenarios) for _ in range(num_cpu)])
-    vec_env_both = DummyVecEnv([lambda: WNTRGymEnv(pipes, hanoi_scenarios)])
+    vec_env_both = SubprocVecEnv([lambda: WNTRGymEnv(pipes, 
+                                                      all_scenarios, current_max_cost=global_max_cost, current_max_pd=global_max_pd, 
+                                                      initial_budget_per_step=budget_per_step,
+                                                      start_of_episode_budget=initial_budget,
+                                                      budget_exceeded_penalty_type=budget_penalty_type,
+                                                      budget_penalty_factor = budget_penalty_factor) for _ in range(num_cpu)], start_method='spawn')
+    # vec_env_both = DummyVecEnv([lambda: WNTRGymEnv(pipes, hanoi_scenarios)])
     agent1 = GraphPPOAgent(vec_env_both, pipes, **ppo_config)
     
     cb1 = PlottingCallback()
     agent1.train(total_timesteps=total_timesteps, callback=cb1)
     
     ts1 = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    model_path1 = os.path.join("agents", f"agent1_hanoi_only_{ts1}")
-    log_path1 = os.path.join("Plots", f"training_log_agent1_hanoi_only_{ts1}.csv")
+    model_path1 = os.path.join("agents", f"agent1_both_{ts1}")
+    log_path1 = os.path.join("Plots", f"training_log_agent1_both_{ts1}.csv")
     agent1.save(model_path1)
 
     os.makedirs("Plots", exist_ok=True)
@@ -632,9 +726,9 @@ def train_both():
     # vec_env_anytown.close()
 
     print(f"Agent 1 training complete. Model: {model_path1}, Log: {log_path1}")
-    drl1_results = evaluate_agent_by_scenario(model_path1, pipes, anytown_scenarios)
-    rand1_results = evaluate_random_policy_by_scenario(pipes, anytown_scenarios)
-    generate_and_save_plots(model_path1, log_path1, drl1_results, rand1_results, pipes, anytown_scenarios)
+    drl1_results = evaluate_agent_by_scenario(model_path1, pipes, all_scenarios)
+    rand1_results = evaluate_random_policy_by_scenario(pipes, all_scenarios)
+    generate_and_save_plots(model_path1, log_path1, drl1_results, rand1_results, pipes, all_scenarios)
 
     training_time = time.time() - start_time
 
@@ -720,43 +814,47 @@ def inspect_agent_actions(model_path: str, pipes: dict, scenarios: list, target_
 if __name__ == "__main__":
     # --- Overall Configuration ---
     
-    train_just_anytown()
-    # train_multiple()
-    train_just_hanoi()
+    # train_just_anytown()
+    # # train_multiple()
+    # train_just_hanoi(single_scenario=False)
     # train_both()
 
-    # pipes_config = {
-    #     'Pipe_1': {'diameter': 0.3048, 'unit_cost': 36.58},
-    #     'Pipe_2': {'diameter': 0.4064, 'unit_cost': 56.32},
-    #     'Pipe_3': {'diameter': 0.5080, 'unit_cost': 78.71},
-    #     'Pipe_4': {'diameter': 0.6096, 'unit_cost': 103.47},
-    #     'Pipe_5': {'diameter': 0.7620, 'unit_cost': 144.60},
-    #     'Pipe_6': {'diameter': 1.0160, 'unit_cost': 222.62}
-    # }
+    pipes_config = {
+        'Pipe_1': {'diameter': 0.3048, 'unit_cost': 36.58},
+        'Pipe_2': {'diameter': 0.4064, 'unit_cost': 56.32},
+        'Pipe_3': {'diameter': 0.5080, 'unit_cost': 78.71},
+        'Pipe_4': {'diameter': 0.6096, 'unit_cost': 103.47},
+        'Pipe_5': {'diameter': 0.7620, 'unit_cost': 144.60},
+        'Pipe_6': {'diameter': 1.0160, 'unit_cost': 222.62}
+    }
 
-    # # Anytown scenarios
-    # scenarios_list = [
-    #     'anytown_densifying_1', 'anytown_densifying_2', 'anytown_densifying_3',
-    #     'anytown_sprawling_1', 'anytown_sprawling_2', 'anytown_sprawling_3', 
-    #     'hanoi_densifying_1', 'hanoi_densifying_2', 'hanoi_densifying_3',
-    #     'hanoi_sprawling_1', 'hanoi_sprawling_2', 'hanoi_sprawling_3'
-    # ]
+    # Anytown scenarios
+    scenarios_list = [
+        'anytown_densifying_1', 'anytown_densifying_2', 'anytown_densifying_3',
+        'anytown_sprawling_1', 'anytown_sprawling_2', 'anytown_sprawling_3', 
+        'hanoi_densifying_1', 'hanoi_densifying_2', 'hanoi_densifying_3',
+        'hanoi_sprawling_1', 'hanoi_sprawling_2', 'hanoi_sprawling_3'
+    ]
 
-    # anytown_scenarios = [s for s in scenarios_list if 'anytown' in s]
-    # hanoi_scenarios = [s for s in scenarios_list if 'hanoi' in s]
+    anytown_scenarios = [s for s in scenarios_list if 'anytown' in s]
+    hanoi_scenarios = [s for s in scenarios_list if 'hanoi' in s]
 
-    # saved_model_path = "agents/agent1_hanoi_only_20250604_024249"
+    saved_model_path = "agents/agent1_both_20250605_150838"
+    log_path = "Plots/training_log_agent1_both_20250605_150838.csv"
     
-    # if os.path.exists(saved_model_path + ".zip"):
-    # #      inspect_agent_actions(saved_model_path, pipes_config, scenarios_list, target_scenario_name='anytown_sprawling_2')
-    #     plot_pipe_diameters_heatmap_over_time(
-    #         model_path=saved_model_path,
-    #         pipes_config=pipes_config,
-    #         scenarios_list=hanoi_scenarios,
-    #         num_episodes_for_data=24,  # Number of episodes to average over
-    #         target_scenario_name='hanoi_sprawling_2',  # Specify the scenario to visualise
-    #         save_dir="Plots/Pipe_Diameter_Evolution/Hanoi_Agent_20250604_024249"
+    if os.path.exists(saved_model_path + ".zip"):
 
-    #     )
-    # else:
-    #      print(f"Model path not found: {saved_model_path}.zip")
+    #      inspect_agent_actions(saved_model_path, pipes_config, scenarios_list, target_scenario_name='anytown_sprawling_2')
+        # plot_pipe_diameters_heatmap_over_time(
+        #     model_path=saved_model_path,
+        #     pipes_config=pipes_config,
+        #     scenarios_list=anytown_scenarios,
+        #     num_episodes_for_data=24,  # Number of episodes to average over
+        #     target_scenario_name='hanoi_sprawling_2',  # Specify the scenario to visualise
+        #     save_dir="Plots/Pipe_Diameter_Evolution/Anytown_Agent_20250604_180536"
+
+        # )
+
+        drl1_results = evaluate_agent_by_scenario(saved_model_path, pipes_config, scenarios_list)
+        rand1_results = evaluate_random_policy_by_scenario(pipes_config, scenarios_list)
+        generate_and_save_plots(saved_model_path, log_path, drl1_results, rand1_results, pipes_config, scenarios_list)

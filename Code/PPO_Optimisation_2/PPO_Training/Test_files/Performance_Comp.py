@@ -80,7 +80,9 @@ def plot_performance_comparison(results: dict, save_path):
     durations = list(results.values())
 
     fig, ax = plt.subplots(figsize=(12, 7))
-    bars = ax.bar(labels, durations, color= matplotlib.cm.magma(np.linspace(0, 1, len(labels))))
+    bars = ax.bar(labels, durations, 
+                #   color= matplotlib.cm.magma(np.linspace(0, 1, len(labels)))
+                )
 
     ax.set_ylabel('Training Duration (seconds)')
     ax.set_title('Training Performance Comparison')

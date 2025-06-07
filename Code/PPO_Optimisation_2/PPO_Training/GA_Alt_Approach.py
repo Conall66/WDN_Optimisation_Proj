@@ -31,7 +31,12 @@ PIPES_CONFIG = {
 }
 PIPE_DIAMETER_OPTIONS = sorted([p['diameter'] for p in PIPES_CONFIG.values()]) # Ensure sorted
 LABOUR_COST = 100  # Ensure this matches the value in WNTRGymEnv
+ENERGY_COST = 0.26  # Cost per kWh, ensure this matches the value in WNTRGymEnv
 NETWORKS_FOLDER_PATH = 'Modified_nets'
+
+EXCLUDE_PIPES_ANYTOWN = ['4', '33', '40', '142', '143'] # As used in Reward.py for Anyto
+
+EXCLUDE_PIPES_HANOI = ['12', '11', '10', '2', '1', '21', '22']
 
 # --- Global variables for GA fitness context (simplifies PyGAD integration) ---
 ga_current_scenario_base_inp_path = None
@@ -59,33 +64,90 @@ def calculate_max_pd_for_scenario(base_inp_path, pipes_config_dict):
     except Exception as e:
         print(f"Error in calculate_max_pd_for_scenario for {base_inp_path}: {e}")
         return float('inf'), 1
+    
+def calculate_max_cost_for_scenario(base_inp_path, pipes, labour_cost, energy_cost):
 
+    wn = wntr.network.WaterNetworkModel(base_inp_path)
+    initial_pipes = list(wn.pipes())
+
+    pipe_ids = []
+    pipe_diams = []
+    for pipe, pipe_data in initial_pipes:
+        pipe_ids.append(pipe)
+        pipe_diams.append(pipe_data.diameter)
+    
+    # Create a dictionary of original pipe diameters
+    original_pipe_diameters = dict(zip(pipe_ids, pipe_diams))
+
+    # original_pipe_diameters = {pipe.name: pipe.diameter for pipe in initial_pipes}
+
+    max_diameter = max([pipes[pipe]['diameter'] for pipe in pipes])
+    next_largest = max([pipes[pipe]['diameter'] for pipe in pipes if pipes[pipe]['diameter'] < max_diameter])
+
+    print(f"Max diameter: {max_diameter}, Next largest diameter: {next_largest}")
+
+    # Extract pipe IDs from initial_pipes
+    initial_pipe_ids = [pipe_data.name for pipe, pipe_data in initial_pipes]
+    max_actions = [(pipe_id, max_diameter) for pipe_id in initial_pipe_ids]
+
+    # Create a new list for corrected max actions
+    corrected_max_actions = []
+    
+    # Check if pipes already have the maximum diameter and adjust accordingly
+    for i, (pipe_id, new_diameter) in enumerate(max_actions):
+        # Get the current diameter from original_pipe_diameters if available
+        if pipe_id in original_pipe_diameters:
+            current_diameter = original_pipe_diameters[pipe_id]
+        else:
+            # Otherwise get it from the current network
+            for pipe, pipe_data in initial_pipes:
+                if pipe_data.name == pipe_id:
+                    current_diameter = pipe_data.diameter
+                    break
+        
+        # If the pipe already has the maximum diameter, use next largest instead
+        if current_diameter == max_diameter:
+            corrected_max_actions.append((pipe_id, next_largest))
+        else:
+            corrected_max_actions.append((pipe_id, max_diameter))
+    
+    max_actions = corrected_max_actions
+
+    print("-------------------------------------")
+    print("Calculating cost given maximum actions...")
+
+    max_cost = compute_total_cost(initial_pipes, max_actions, labour_cost, energy_cost, pipes, original_pipe_diameters)
+
+    return max_cost
 
 def ga_fitness_function(ga_instance, solution, solution_idx):
     """
     Fitness function for the Genetic Algorithm.
-    The 'solution' is a list of indices, where each index corresponds to a diameter
-    in PIPE_DIAMETER_OPTIONS for a respective pipe.
+    Only applies changes to non-excluded pipes.
     """
-    global ga_simulation_calls_counter
+    global ga_simulation_calls_counter, ga_current_scenario_pipes_to_optimize
     ga_simulation_calls_counter += 1
 
-    # Create a trial network from the base .inp file for the current scenario
+    # Create a trial network from the base .inp file
     wn_trial = wntr.network.WaterNetworkModel(ga_current_scenario_base_inp_path)
     
     actions_for_this_solution = []
-    for i, pipe_name in enumerate(wn_trial.pipe_name_list):
-        # solution[i] is an index for PIPE_DIAMETER_OPTIONS
+    
+    # Only modify the pipes we want to optimize
+    for i, pipe_name in enumerate(ga_current_scenario_pipes_to_optimize):
         chosen_diameter_index = int(solution[i])
         new_diameter = PIPE_DIAMETER_OPTIONS[chosen_diameter_index]
         
-        # Check if it's different from original for cost calculation
+        # Check if diameter is different from original
         original_diameter = ga_current_scenario_original_diameters[pipe_name]
-        if abs(new_diameter - original_diameter) > 1e-6: # float comparison
+        if abs(new_diameter - original_diameter) > 1e-6:
             actions_for_this_solution.append((pipe_name, new_diameter))
+        
+        # Apply the new diameter
         wn_trial.get_link(pipe_name).diameter = new_diameter
 
-    sim_results, sim_metrics = run_epanet_simulation(wn_trial)
+    sim_results = run_epanet_simulation(wn_trial)
+    sim_metrics = evaluate_network_performance(wn_trial, sim_results)
 
     if not sim_results or (hasattr(sim_results.node, 'pressure') and sim_results.node['pressure'].isnull().values.any()):
         return -1e9 # Very low fitness for failed/unstable simulation
@@ -106,10 +168,10 @@ def ga_fitness_function(ga_instance, solution, solution_idx):
         labour_cost=LABOUR_COST,
         downgraded_pipes=downgraded_in_ga_solution, 
         disconnections=False, # Assuming GA does not model disconnections for this setup
-        max_pd=ga_current_scenario_max_pd
+        max_pd= ga_current_scenario_max_pd,
+        max_cost= ga_current_scenario_max_cost
     )
     return float(reward_val)
-
 
 def evaluate_drl_agent_on_final_state(drl_model_path, target_scenario_name, pipes_config_dict, labour_cost_val):
     """
@@ -126,16 +188,28 @@ def evaluate_drl_agent_on_final_state(drl_model_path, target_scenario_name, pipe
     if not inp_files:
         raise FileNotFoundError(f"No .inp files found for DRL scenario {target_scenario_name}")
     
-    final_inp_file_for_scenario = inp_files[-1]
+    # final_inp_file_for_scenario = inp_files[-1] # Use first file instead!
+    final_inp_file_for_scenario = 'Step_50.inp'
+
     final_inp_path = os.path.join(scenario_path, final_inp_file_for_scenario)
 
     wn_final_base = wntr.network.WaterNetworkModel(final_inp_path)
-    original_diameters_of_final_inp = {
-        p_name: wn_final_base.get_link(p_name).diameter for p_name in wn_final_base.pipe_name_list
-    }
+    
+    original_diameters_of_final_inp = {}
+    for p_name, p_data in wn_final_base.pipes():
+        original_diameters_of_final_inp[p_data.name] = p_data.diameter
+    
+    print(f"  Original diameters for final .inp file {final_inp_file_for_scenario}: {original_diameters_of_final_inp}")
     
     max_pd_for_final_inp, sim_calls_max_pd = calculate_max_pd_for_scenario(final_inp_path, pipes_config_dict)
     drl_sim_calls_for_this_eval += sim_calls_max_pd
+
+    max_cost = calculate_max_cost_for_scenario(
+        ga_current_scenario_base_inp_path, 
+        pipes=PIPES_CONFIG, 
+        labour_cost=LABOUR_COST, 
+        energy_cost=ENERGY_COST
+    )
 
     # --- Run DRL agent through the entire scenario ---
     # The WNTRGymEnv is set up to run only the target_scenario_name
@@ -191,8 +265,12 @@ def evaluate_drl_agent_on_final_state(drl_model_path, target_scenario_name, pipe
             # eval_env.current_network is the network state *after* DRL's actions on the final .inp file.
             final_drl_network_configuration = eval_env.current_network 
             # The actions that transformed the *original final .inp* to this state:
+            # for p_name in final_drl_network_configuration.pipe_name_list:
             for p_name in final_drl_network_configuration.pipe_name_list:
                 drl_chosen_diameter = final_drl_network_configuration.get_link(p_name).diameter
+
+                print(f"  DRL chose diameter {drl_chosen_diameter} for pipe {p_name} in final step.")
+
                 original_final_inp_diam = original_diameters_of_final_inp[p_name]
                 if abs(drl_chosen_diameter - original_final_inp_diam) > 1e-6:
                     actions_taken_by_drl_for_final_step.append((p_name, drl_chosen_diameter))
@@ -212,14 +290,15 @@ def evaluate_drl_agent_on_final_state(drl_model_path, target_scenario_name, pipe
     # It's an evaluation call, not part of DRL's decision process for *this* specific comparison.
     # However, to make it comparable to GA's "best solution evaluation", we can count it.
     drl_sim_calls_for_this_eval += 1
-    final_drl_results, final_drl_metrics = run_epanet_simulation(final_drl_network_configuration)
+    final_drl_results = run_epanet_simulation(final_drl_network_configuration)
+    final_drl_metrics = evaluate_network_performance(final_drl_network_configuration, final_drl_results)
     
     if not final_drl_results or (hasattr(final_drl_results.node, 'pressure') and final_drl_results.node['pressure'].isnull().values.any()):
         print(f"  DRL's final configuration for {target_scenario_name} is unstable.")
         return {'reward': -1e9, 'cost': float('inf'), 'pd': float('inf'), 'demand_sat': 0, 
                 'sim_calls': drl_sim_calls_for_this_eval, 
                 'network_size': (len(final_drl_network_configuration.node_name_list), len(final_drl_network_configuration.pipe_name_list))}
-
+    
     # DRL is constrained to upgrades, so downgraded_pipes is False
     drl_reward, drl_cost, _, drl_demand_sat, _, _, _ = calculate_reward(
         current_network=final_drl_network_configuration,
@@ -230,7 +309,8 @@ def evaluate_drl_agent_on_final_state(drl_model_path, target_scenario_name, pipe
         labour_cost=labour_cost_val,
         downgraded_pipes=False, 
         disconnections=False,
-        max_pd=max_pd_for_final_inp 
+        max_pd=max_pd_for_final_inp,
+        max_cost=max_cost,
     )
     
     drl_abs_pd = final_drl_metrics.get('total_pressure_deficit', float('inf'))
@@ -241,235 +321,438 @@ def evaluate_drl_agent_on_final_state(drl_model_path, target_scenario_name, pipe
         'pd': drl_abs_pd,
         'demand_sat': drl_demand_sat, # This is already a ratio
         'sim_calls': drl_sim_calls_for_this_eval,
-        'network_size': (len(final_drl_network_configuration.node_name_list), len(final_drl_network_configuration.pipe_name_list))
+        'network_size': (len(final_drl_network_configuration.node_name_list), len(final_drl_network_configuration.pipe_name_list)),
+        'network': final_drl_network_configuration, # Return the network for further analysis if needed
     }
 
-
-def run_ga_drl_comparison(drl_model_path, scenarios_to_compare, 
-                          ga_generations=50, ga_pop_size=20, ga_mutation_percent=10):
-    """
-    Main function to run GA and DRL comparisons.
-    """
+def run_single_scenario_comparison(
+    drl_model_path: str, 
+    target_scenario_name: str,
+    pipes_config_dict: dict,
+    labour_cost_val: float,
+    ga_generations: int = 50, 
+    ga_pop_size: int = 20, 
+    ga_mutation_percent: int = 10,
+    ga_crossover_probability: float = 0.8,
+    ga_keep_elitism: int = 2
+):
     global ga_current_scenario_base_inp_path, ga_current_scenario_original_diameters
-    global ga_current_scenario_max_pd, ga_simulation_calls_counter
+    global ga_current_scenario_max_pd, ga_current_scenario_max_cost
+    global ga_simulation_calls_counter, ga_current_scenario_pipes_to_optimize
 
-    comparison_data = []
+    comparison_results = {} # Store results for this single comparison
+
+    print(f"\n--- Starting Comparison for Scenario: {target_scenario_name} ---")
+
+    # --- Setup for both GA and DRL final state evaluation ---
+    scenario_path = os.path.join(NETWORKS_FOLDER_PATH, target_scenario_name)
+    inp_files_list = [f for f in os.listdir(scenario_path) if f.endswith('.inp')]
+    if not inp_files_list:
+        print(f"  No .inp files found for scenario {target_scenario_name}. Skipping.")
+        return None
+    try: # Sort .inp files by step number
+        inp_files_list.sort(key=lambda x: int(x.split('_')[1].split('.')[0]))
+    except Exception as e:
+        print(f"Could not sort .inp files numerically for {target_scenario_name}, using lexicographical sort. Error: {e}")
+        inp_files_list.sort()
+
+    # GA optimizes the final network state of the scenario
+    final_inp_filename = inp_files_list[-1]
+
+    print(f"  Final .inp file for GA optimization: {final_inp_filename}")
+
+    ga_current_scenario_base_inp_path = os.path.join(scenario_path, final_inp_filename)
     
-    for scenario_name in scenarios_to_compare:
-        print(f"\n--- Starting Comparison for Scenario: {scenario_name} ---")
+    wn_base_for_ga_and_final_drl = wntr.network.WaterNetworkModel(ga_current_scenario_base_inp_path)
+    ga_current_scenario_original_diameters = {
+        p_name: wn_base_for_ga_and_final_drl.get_link(p_name).diameter 
+        for p_name in wn_base_for_ga_and_final_drl.pipe_name_list
+    }
+    num_pipes = len(wn_base_for_ga_and_final_drl.pipe_name_list)
 
-        # --- Setup for both GA and DRL final state evaluation ---
-        scenario_path = os.path.join(NETWORKS_FOLDER_PATH, scenario_name)
-        inp_files = sorted([f for f in os.listdir(scenario_path) if f.endswith('.inp')])
-        if not inp_files:
-            print(f"  No .inp files found for scenario {scenario_name}. Skipping.")
-            continue
-        
-        # The GA optimizes the final network state of the scenario
-        final_inp_filename = inp_files[-1]
-        ga_current_scenario_base_inp_path = os.path.join(scenario_path, final_inp_filename)
-        
-        wn_base = wntr.network.WaterNetworkModel(ga_current_scenario_base_inp_path)
-        ga_current_scenario_original_diameters = {
-            p_name: wn_base.get_link(p_name).diameter for p_name in wn_base.pipe_name_list
-        }
-        num_pipes = len(wn_base.pipe_name_list)
-        num_nodes = len(wn_base.node_name_list)
-        network_size_str = f"Nodes: {num_nodes}, Pipes: {num_pipes}"
+    # Calculate max_pd for this final network state (used by GA fitness and DRL final eval)
+    ga_current_scenario_max_pd, sim_calls_for_max_pd_setup = calculate_max_pd_for_scenario(
+        ga_current_scenario_base_inp_path, pipes_config_dict
+    )
 
-        # Calculate max_pd for this base network (used by both GA fitness and DRL final eval)
-        # This is a "setup" simulation call for the scenario.
-        ga_current_scenario_max_pd, sim_calls_for_max_pd_setup = calculate_max_pd_for_scenario(ga_current_scenario_base_inp_path, PIPES_CONFIG)
-        
-        # --- GA Run ---
-        print(f"  Running GA for {scenario_name} (target: {final_inp_filename})...")
-        ga_simulation_calls_counter = 0 # Reset for this specific GA run
-        start_time_ga = time.time()
+    # calculate max_cost
+    ga_current_scenario_max_cost = calculate_max_cost_for_scenario(
+        ga_current_scenario_base_inp_path, pipes = PIPES_CONFIG, labour_cost = LABOUR_COST, energy_cost = ENERGY_COST)
+    
+    print(f"  Max PD for {final_inp_filename}: {ga_current_scenario_max_pd}, Max Cost: {ga_current_scenario_max_cost}")
+    
+    # --- GA Run ---
+    print(f"  Running GA for {target_scenario_name} (optimizing state of: {final_inp_filename})...")
+    ga_simulation_calls_counter = 0 
+    start_time_ga = time.time()
 
-        ga_instance = pygad.GA(
-            num_generations=ga_generations,
-            num_parents_mating=max(2, int(ga_pop_size * 0.2)), # Ensure at least 2 parents
-            fitness_func=ga_fitness_function,
-            sol_per_pop=ga_pop_size,
-            num_genes=num_pipes,
-            gene_type=int,
-            gene_space={'low': 0, 'high': len(PIPE_DIAMETER_OPTIONS) - 1},
-            mutation_percent_genes=ga_mutation_percent,
-            # on_generation=lambda ga_inst: print(f"  GA Gen: {ga_inst.generations_completed}, Best Fitness: {ga_inst.best_solution()[1]:.2f}")
-        )
-        ga_instance.run()
-        ga_run_time = time.time() - start_time_ga
-        
-        # Total GA simulation calls = calls during run + 1 for max_pd setup
-        total_ga_sim_calls = ga_simulation_calls_counter + sim_calls_for_max_pd_setup
-        
-        best_ga_solution_chromosome, best_ga_fitness, _ = ga_instance.best_solution()
-        
-        # Evaluate the best GA solution to get detailed metrics
-        wn_best_ga = wntr.network.WaterNetworkModel(ga_current_scenario_base_inp_path)
-        ga_actions_for_best = []
-        for i, pipe_name in enumerate(wn_best_ga.pipe_name_list):
-            chosen_idx = int(best_ga_solution_chromosome[i])
-            new_diam = PIPE_DIAMETER_OPTIONS[chosen_idx]
-            if abs(new_diam - ga_current_scenario_original_diameters[pipe_name]) > 1e-6:
-                ga_actions_for_best.append((pipe_name, new_diam))
-            wn_best_ga.get_link(pipe_name).diameter = new_diam
-        
-        # This is an additional simulation to get metrics for the GA's best found solution
-        # It's fair to count it as part of GA's overhead if DRL's final eval sim is also counted.
-        total_ga_sim_calls += 1 
-        ga_best_results, ga_best_metrics = run_epanet_simulation(wn_best_ga)
-        
-        ga_cost, ga_pd_abs, ga_demand_sat_ratio = float('inf'), float('inf'), 0
-        if ga_best_results and not ga_best_results.node['pressure'].isnull().values.any():
-            # Recalculate cost based on actions from original .inp
-            ga_cost = compute_total_cost(
-                initial_pipes=wn_best_ga.pipes(), # Not strictly needed, actions list is key
-                actions=ga_actions_for_best,
-                labour_cost=LABOUR_COST,
-                energy_cost=ga_best_metrics['total_pump_cost'],
-                pipes=PIPES_CONFIG,
-                original_pipe_diameters=ga_current_scenario_original_diameters
-            )
-            ga_pd_abs = ga_best_metrics.get('total_pressure_deficit', float('inf'))
-            ga_demand_sat_ratio = ga_best_metrics.get('demand_satisfaction_ratio', 0)
-        
-        comparison_data.append({
-            'Scenario': scenario_name, 'Method': 'GA', 'Network Size': network_size_str,
-            'Fitness/Reward': best_ga_fitness, 'Total Cost (£)': ga_cost,
-            'Pressure Deficit (m)': ga_pd_abs, 'Demand Satisfaction (%)': ga_demand_sat_ratio * 100,
-            'Simulation Calls': total_ga_sim_calls, 'Time (s)': ga_run_time
-        })
-        print(f"  GA Results - Fitness: {best_ga_fitness:.2f}, Cost: {ga_cost:.2f}, PD: {ga_pd_abs:.2f}, Demand Sat: {ga_demand_sat_ratio*100:.2f}%, Sim Calls: {total_ga_sim_calls}, Time: {ga_run_time:.2f}s")
+    # Check the network type and exclude the appropriate pipes
+    # if target_scenario_name includes 'Anytown':
+    if 'Anytown' in target_scenario_name:
+        excluded_pipes = EXCLUDE_PIPES_ANYTOWN
+    elif 'Hanoi' in target_scenario_name:
+        excluded_pipes = EXCLUDE_PIPES_HANOI
+    else:
+        excluded_pipes = []
 
-        # --- DRL Evaluation ---
-        print(f"  Evaluating DRL agent on {scenario_name} for final state comparison...")
-        start_time_drl = time.time()
-        drl_metrics = evaluate_drl_agent_on_final_state(drl_model_path, scenario_name, PIPES_CONFIG, LABOUR_COST)
-        drl_run_time = time.time() - start_time_drl
+    # Get list of pipes to optimize (exclude the specified pipes)
+    ga_current_scenario_pipes_to_optimize = [
+        p_name for p_name in wn_base_for_ga_and_final_drl.pipe_name_list 
+        if p_name not in excluded_pipes
+    ]
+    
+    # Set number of genes based on pipes to optimize
+    num_genes = len(ga_current_scenario_pipes_to_optimize)
+    
+    print(f"  Optimizing {num_genes} pipes (excluded {len(excluded_pipes)} pipes: {excluded_pipes})")
+    
+    # Initialize GA instance with only the pipes we want to optimize
+    ga_instance = pygad.GA(
+        num_generations=ga_generations,
+        num_parents_mating=max(2, int(ga_pop_size * 0.2)),
+        fitness_func=ga_fitness_function,
+        sol_per_pop=ga_pop_size,
+        num_genes=num_genes,  # Only optimize non-excluded pipes
+        gene_type=int,
+        gene_space={'low': 0, 'high': len(PIPE_DIAMETER_OPTIONS) - 1},
+        mutation_percent_genes=ga_mutation_percent,
+        crossover_probability=ga_crossover_probability,
+        keep_elitism=ga_keep_elitism,
+        parent_selection_type="tournament",
+        K_tournament=3,
+        stop_criteria=["reach_1.0", "saturate_10"]
+    )
+    
+    ga_instance.run()
+    ga_run_time = time.time() - start_time_ga # This is GA's "training time"
+    
+    total_ga_sim_calls_during_opt = ga_simulation_calls_counter
+    
+    # When processing best solution, make sure to match the chromosome to the right pipes
+    best_ga_solution_chromosome, best_ga_fitness, _ = ga_instance.best_solution()
+    
+    # Construct the GA's best network and identify upgrades
+    wn_best_ga = wntr.network.WaterNetworkModel(ga_current_scenario_base_inp_path)
+    ga_proposed_upgrades = []
+    ga_actions_for_reward_calc = []
 
-        comparison_data.append({
-            'Scenario': scenario_name, 'Method': 'DRL', 'Network Size': network_size_str,
-            'Fitness/Reward': drl_metrics['reward'], 'Total Cost (£)': drl_metrics['cost'],
-            'Pressure Deficit (m)': drl_metrics['pd'], 'Demand Satisfaction (%)': drl_metrics['demand_sat'] * 100,
-            'Simulation Calls': drl_metrics['sim_calls'], 'Time (s)': drl_run_time
-        })
-        print(f"  DRL Results - Reward: {drl_metrics['reward']:.2f}, Cost: {drl_metrics['cost']:.2f}, PD: {drl_metrics['pd']:.2f}, Demand Sat: {drl_metrics['demand_sat']*100:.2f}%, Sim Calls: {drl_metrics['sim_calls']}, Time: {drl_run_time:.2f}s")
+    for i, pipe_name in enumerate(ga_current_scenario_pipes_to_optimize):
+        chosen_idx = int(best_ga_solution_chromosome[i])
+        new_diam = PIPE_DIAMETER_OPTIONS[chosen_idx]
+        original_diam = ga_current_scenario_original_diameters[pipe_name]
+        
+        wn_best_ga.get_link(pipe_name).diameter = new_diam
+        if abs(new_diam - original_diam) > 1e-6:
+            ga_proposed_upgrades.append((pipe_name, original_diam, new_diam))
+            ga_actions_for_reward_calc.append((pipe_name, new_diam))
 
-    return pd.DataFrame(comparison_data)
+    # Evaluate the best GA solution to get detailed metrics (this is one final simulation)
+    ga_final_sim_results = run_epanet_simulation(wn_best_ga)
+    ga_final_sim_metrics = evaluate_network_performance(wn_best_ga, ga_final_sim_results)
+    
+    ga_reward_final, ga_cost_final, ga_pd_ratio_final, ga_demand_sat_final, _, _, _ = calculate_reward(
+        current_network=wn_best_ga,
+        original_pipe_diameters=ga_current_scenario_original_diameters, # Compare to original final step
+        actions=ga_actions_for_reward_calc, # Actions GA took relative to original final step
+        pipes=pipes_config_dict,
+        performance_metrics=ga_final_sim_metrics,
+        labour_cost=labour_cost_val,
+        downgraded_pipes=False, # GA should learn not to downgrade if fitness is penalized
+        max_pd=ga_current_scenario_max_pd, # Use max_pd of the base final state
+        max_cost=ga_current_scenario_max_cost) # Use max_cost of the base final state)
+    
+    comparison_results['GA'] = {
+        'Method': 'GA',
+        'Scenario': target_scenario_name,
+        'Target_File': final_inp_filename,
+        'Training_Time_s': ga_run_time,
+        'Sim_Calls_Optimization': total_ga_sim_calls_during_opt,
+        'Sim_Calls_Setup_Eval': sim_calls_for_max_pd_setup + 1, # +1 for final solution eval
+        'Best_Fitness_Raw': best_ga_fitness, # This is raw from fitness_func
+        'Final_Calculated_Reward': ga_reward_final,
+        'Final_Cost': ga_cost_final,
+        'Proposed_Upgrades': ga_proposed_upgrades
+    }
+    print(f"  GA Best Solution for {final_inp_filename} - Calculated Reward: {ga_reward_final:.2f}, Cost: {ga_cost_final:.2f}")
+    print(f"  GA Proposed Upgrades ({len(ga_proposed_upgrades)}): {ga_proposed_upgrades}")
 
+    # --- DRL Evaluation: Time for one full episode ---
+    print(f"  Evaluating DRL agent on full episode of {target_scenario_name} for timing and final state...")
+    start_time_drl_episode = time.time()
+    
+    # evaluate_drl_agent_on_final_state runs the full episode and evaluates the *final* configuration
+    # We are interested in the *time taken to run one full episode* for the DRL agent
+    # The existing function already measures the time for DRL agent to process one scenario to get final state
+    
+    # We need a separate function or adaptation to get the time for ONE DRL episode run
+    # For now, let's use evaluate_drl_agent_on_final_state and report its DRL run time as "evaluation time"
+    # and its reported "reward" as the reward for its final configuration.
+    
+    drl_final_state_metrics = evaluate_drl_agent_on_final_state(
+        drl_model_path, target_scenario_name, pipes_config_dict, labour_cost_val
+    )
+    drl_episode_run_time = time.time() - start_time_drl_episode # This is the time for the DRL eval function to run
 
-def plot_comparison_results(df_results, timestamp):
+    comparison_results['DRL'] = {
+        'Method': 'DRL',
+        'Scenario': target_scenario_name,
+        'Target_File': final_inp_filename, # DRL also effectively targets this by end of episode
+        'Episode_Run_Time_s': drl_episode_run_time, # Time to get to final state and evaluate it
+        'Sim_Calls_Episode': drl_final_state_metrics.get('sim_calls', 'N/A'), # Total calls during the episode
+        'Final_Calculated_Reward': drl_final_state_metrics.get('reward', 'N/A'),
+        'Final_Cost': drl_final_state_metrics.get('cost', 'N/A'),
+        'Proposed_Upgrades': "Inspect DRL agent's actions on final step via other means" # Not directly extracted here
+    }
+    print(f"  DRL Full Episode Evaluation for {target_scenario_name} - Time: {drl_episode_run_time:.2f}s, Final State Reward: {drl_final_state_metrics.get('reward', 'N/A'):.2f}")
+
+    return comparison_results, ga_final_sim_metrics, drl_final_state_metrics
+
+def create_pipe_diameter_comparison(ga_network, drl_network, original_network, scenario_name, timestamp):
     """
-    Generates and saves plots comparing GA and DRL results.
+    Creates a DataFrame comparing pipe diameters from original network, GA solution, and DRL solution.
+    Also saves the DataFrame to CSV and generates a visual comparison.
+    
+    Args:
+        ga_network: The best network solution from GA
+        drl_network: The final network configuration from DRL
+        original_network: The original network before any modifications
+        scenario_name: Name of the scenario being compared
+        timestamp: Timestamp for file naming
     """
+    # Get all pipe names (union of all networks to handle any differences)
+    all_pipe_names = set(original_network.pipe_name_list)
+    all_pipe_names.update(ga_network.pipe_name_list if ga_network else [])
+    all_pipe_names.update(drl_network.pipe_name_list if drl_network else [])
+    all_pipe_names = sorted(list(all_pipe_names))
+    
+    # Create dictionary to store diameter data
+    diameter_data = {
+        'pipe_name': all_pipe_names,
+        'original_diameter': [],
+        'ga_diameter': [],
+        'drl_diameter': []
+    }
+    
+    # Fill in diameter values
+    for pipe_name in all_pipe_names:
+        # Original diameter
+        if pipe_name in original_network.pipe_name_list:
+            diameter_data['original_diameter'].append(original_network.get_link(pipe_name).diameter)
+        else:
+            diameter_data['original_diameter'].append(None)
+        
+        # GA diameter
+        if ga_network and pipe_name in ga_network.pipe_name_list:
+            diameter_data['ga_diameter'].append(ga_network.get_link(pipe_name).diameter)
+        else:
+            diameter_data['ga_diameter'].append(None)
+        
+        # DRL diameter
+        if drl_network and pipe_name in drl_network.pipe_name_list:
+            diameter_data['drl_diameter'].append(drl_network.get_link(pipe_name).diameter)
+        else:
+            diameter_data['drl_diameter'].append(None)
+    
+    # Create DataFrame
+    diameter_df = pd.DataFrame(diameter_data)
+    
+    # Calculate changes from original
+    diameter_df['ga_change'] = diameter_df['ga_diameter'] - diameter_df['original_diameter']
+    diameter_df['drl_change'] = diameter_df['drl_diameter'] - diameter_df['original_diameter']
+    
+    # Save to CSV
+    results_dir = "Results"
+    os.makedirs(results_dir, exist_ok=True)
+    csv_filename = os.path.join(results_dir, f"pipe_diameters_{scenario_name.replace('/', '_')}_{timestamp}.csv")
+    diameter_df.to_csv(csv_filename, index=False)
+    print(f"Saved pipe diameter comparison to: {csv_filename}")
+    
+    # Create visualization for a subset of pipes (top 10 with largest changes)
+    plot_pipe_diameter_comparison(diameter_df, scenario_name, timestamp)
+    
+    return diameter_df
+
+def plot_pipe_diameter_comparison(diameter_df, scenario_name, timestamp):
+    """Create a visual comparison of pipe diameters between GA and DRL solutions."""
+    # Find pipes with the largest absolute changes (either GA or DRL)
+    diameter_df['max_abs_change'] = diameter_df[['ga_change', 'drl_change']].abs().max(axis=1)
+    
+    # Get top 10 pipes with largest changes
+    top_pipes = diameter_df.nlargest(10, 'max_abs_change')
+    
+    # Set up the plot
+    plt.figure(figsize=(12, 8))
+    
+    # Set positions for grouped bars
+    pipe_indices = np.arange(len(top_pipes))
+    bar_width = 0.25
+    
+    # Plot bars for each solution
+    plt.bar(pipe_indices - bar_width, top_pipes['original_diameter'], 
+            width=bar_width, label='Original', color='gray', alpha=0.7)
+    plt.bar(pipe_indices, top_pipes['ga_diameter'], 
+            width=bar_width, label='GA Solution', color='skyblue')
+    plt.bar(pipe_indices + bar_width, top_pipes['drl_diameter'], 
+            width=bar_width, label='DRL Solution', color='salmon')
+    
+    # Add labels and title
+    plt.xlabel('Pipe Name')
+    plt.ylabel('Diameter (m)')
+    plt.title(f'Pipe Diameter Comparison - Top 10 Changed Pipes\nScenario: {scenario_name}')
+    plt.xticks(pipe_indices, top_pipes['pipe_name'], rotation=45, ha='right')
+    plt.legend()
+    plt.tight_layout()
+    
+    # Save the plot
     plots_dir = os.path.join("Plots", "GA_DRL_Comparison_Charts")
     os.makedirs(plots_dir, exist_ok=True)
+    plot_filename = os.path.join(plots_dir, f"diameter_comparison_{scenario_name.replace('/', '_')}_{timestamp}.png")
+    plt.savefig(plot_filename)
+    print(f"Saved pipe diameter comparison plot: {plot_filename}")
+    plt.close()
 
-    metrics_to_plot = {
-        'Total Cost (£)': 'Total Cost (£): GA vs DRL',
-        'Pressure Deficit (m)': 'Pressure Deficit (m): GA vs DRL',
-        'Demand Satisfaction (%)': 'Demand Satisfaction (%): GA vs DRL',
-        'Simulation Calls': 'Computational Overhead (Simulation Calls): GA vs DRL',
-        'Time (s)': 'Computational Time (s): GA vs DRL'
-    }
+def plot_time_comparison(ga_results, drl_results, target_scenario_name, timestamp):
+    """Plots the time comparison."""
+    plt.figure(figsize=(8, 6))
+    methods = ['GA Optimization Time', 'DRL Episode Run Time']
+    times = [ga_results.get('Training_Time_s', 0), drl_results.get('Episode_Run_Time_s', 0)]
     
-    scenarios = df_results['Scenario'].unique()
-    num_scenarios = len(scenarios)
-    x = np.arange(num_scenarios)  # the label locations
-    width = 0.35  # the width of the bars
+    bars = plt.bar(methods, times, color=['skyblue', 'salmon'])
+    plt.ylabel('Time (s)')
+    plt.title(f'Time Comparison for Scenario: {target_scenario_name}')
+    for bar in bars:
+        yval = bar.get_height()
+        plt.text(bar.get_x() + bar.get_width()/2.0, yval + 0.05 * max(times), f'{yval:.2f}s', ha='center', va='bottom')
 
-    for metric_col, title in metrics_to_plot.items():
-        fig, ax = plt.subplots(figsize=(max(10, num_scenarios * 2.5 + 2), 7)) # Dynamic width
-        
-        ga_values = df_results[df_results['Method'] == 'GA'][metric_col].values
-        drl_values = df_results[df_results['Method'] == 'DRL'][metric_col].values
-        
-        # Ensure arrays match length of scenarios if a method failed for one
-        ga_plot_vals = [df_results[(df_results['Method'] == 'GA') & (df_results['Scenario'] == s)][metric_col].iloc[0] if not df_results[(df_results['Method'] == 'GA') & (df_results['Scenario'] == s)].empty else 0 for s in scenarios]
-        drl_plot_vals = [df_results[(df_results['Method'] == 'DRL') & (df_results['Scenario'] == s)][metric_col].iloc[0] if not df_results[(df_results['Method'] == 'DRL') & (df_results['Scenario'] == s)].empty else 0 for s in scenarios]
+    plots_dir = os.path.join("Plots", "GA_DRL_Comparison_Charts")
+    os.makedirs(plots_dir, exist_ok=True)
+    plot_filename = os.path.join(plots_dir, f"time_comparison_{target_scenario_name.replace('/', '_')}_{timestamp}.png")
+    plt.savefig(plot_filename)
+    print(f"Saved time comparison plot: {plot_filename}")
+    plt.close()
 
+def plot_reward_comparison(ga_results, drl_results, target_scenario_name, timestamp):
+    """Plots the reward comparison."""
+    plt.figure(figsize=(8, 6))
+    methods = ['GA Best Solution', 'DRL Final Configuration']
+    rewards = [ga_results.get('Final_Calculated_Reward', 0), drl_results.get('Final_Calculated_Reward', 0)]
+    
+    bars = plt.bar(methods, rewards, color=['skyblue', 'salmon'])
+    plt.ylabel('Reward')
+    plt.title(f'Reward Comparison for Scenario: {target_scenario_name}')
+    for bar in bars:
+        yval = bar.get_height()
+        plt.text(bar.get_x() + bar.get_width()/2.0, yval + 0.05 * max(rewards), f'{yval:.2f}', ha='center', va='bottom')
 
-        rects1 = ax.bar(x - width/2, ga_plot_vals, width, label='GA')
-        rects2 = ax.bar(x + width/2, drl_plot_vals, width, label='DRL')
-
-        ax.set_ylabel(metric_col.split('(')[0].strip()) # Cleaner Y-axis label
-        ax.set_title(title)
-        ax.set_xticks(x)
-        ax.set_xticklabels(scenarios, rotation=30, ha="right")
-        ax.legend()
-
-        ax.bar_label(rects1, padding=3, fmt='%.2f')
-        ax.bar_label(rects2, padding=3, fmt='%.2f')
-
-        fig.tight_layout()
-        plot_filename = os.path.join(plots_dir, f"comparison_{metric_col.replace(' (£)', '').replace(' (m)', '').replace(' (%)', '').replace(' ', '_').lower()}_{timestamp}.png")
-        plt.savefig(plot_filename)
-        print(f"Saved comparison plot: {plot_filename}")
-        plt.close(fig) # Close the figure to free memory
+    plots_dir = os.path.join("Plots", "GA_DRL_Comparison_Charts")
+    os.makedirs(plots_dir, exist_ok=True)
+    plot_filename = os.path.join(plots_dir, f"reward_comparison_{target_scenario_name.replace('/', '_')}_{timestamp}.png")
+    plt.savefig(plot_filename)
+    print(f"Saved reward comparison plot: {plot_filename}")
+    plt.close()
 
 if __name__ == "__main__":
-    # --- Configuration for the comparison ---
-    # Ensure you have a trained DRL model. Replace with your actual model path.
-    # Example: latest_drl_model_path = "agents/trained_gnn_ppo_wn_YYYYMMDD_HHMMSS.zip" 
-    # For testing, let's assume a model path. You'll need to provide a real one.
-    
-    # Find the latest trained DRL model in the "agents" directory
-    agents_dir = "agents"
-    if not os.path.exists(agents_dir):
-        print(f"Error: Agents directory '{agents_dir}' not found. Please train a DRL model first or specify a path.")
-        exit()
 
-    list_of_files = [os.path.join(agents_dir, f) for f in os.listdir(agents_dir) if f.startswith("trained_gnn_ppo_wn_") and f.endswith(".zip")]
-    if not list_of_files:
-        print(f"Error: No trained DRL models found in '{agents_dir}'. Please train a DRL model first.")
-        exit()
-    
-    latest_drl_model_path = max(list_of_files, key=os.path.getctime)
-    print(f"Using latest DRL model for comparison: {latest_drl_model_path}")
+    script = os.path.dirname(os.path.abspath(__file__))
+    agents_dir = os.path.join(script, "agents")
+    agent = os.path.join(agents_dir, "agent1_hanoi_only_20250605_115528")  # Adjust to your DRL model path
 
-    scenarios_for_comparison = ['hanoi_sprawling_3', 'anytown_sprawling_3']
-    
-    # GA Parameters (can be tuned)
-    ga_generations = 50  # Number of generations
-    ga_population_size = 30 # Population size
-    ga_mutation_rate = 15 # Mutation rate (percentage of genes)
+    # drl_results = evaluate_drl_agent_on_final_state(
+    #     drl_model_path=agent,
+    #     target_scenario_name="hanoi_sprawling_3",
+    #     pipes_config_dict=PIPES_CONFIG,
+    #     labour_cost_val=LABOUR_COST
+    # )
 
-    # --- Run the comparison ---
-    print("Starting GA vs DRL Comparison...")
-    start_total_comparison_time = time.time()
-    
-    comparison_df = run_ga_drl_comparison(
-        drl_model_path=latest_drl_model_path,
-        scenarios_to_compare=scenarios_for_comparison,
+    # --- Scenario to Compare ---
+    # You specified training on Hanoi, so let's pick a Hanoi sprawling scenario
+    scenario_to_run_comparison = 'hanoi_sprawling_3' # Example
+
+    # GA Parameters
+    ga_generations = 2000  # Can be increased for better GA performance, but takes longer
+    ga_population_size = 30 # Encourage exploration
+    ga_mutation_rate = 15
+
+    print(f"\nStarting Single Scenario Comparison: DRL vs GA")
+    print(f"DRL Model: {agent}")
+    print(f"Scenario: {scenario_to_run_comparison}")
+    print(f"GA Params: Generations={ga_generations}, Pop_Size={ga_population_size}, Mut_Rate={ga_mutation_rate}%")
+
+    results, ga_final_sim_metrics, drl_final_sim_metrics = run_single_scenario_comparison(
+        drl_model_path=agent,
+        target_scenario_name=scenario_to_run_comparison,
+        pipes_config_dict=PIPES_CONFIG, #
+        labour_cost_val=LABOUR_COST, #
         ga_generations=ga_generations,
         ga_pop_size=ga_population_size,
         ga_mutation_percent=ga_mutation_rate
     )
+
+    if results:
+        print("\n--- Single Scenario Comparison Summary ---")
+        print(f"Scenario: {scenario_to_run_comparison}")
+        
+        ga_res = results.get('GA', {})
+        drl_res = results.get('DRL', {})
+
+        print("\nGenetic Algorithm Results:")
+        print(f"  Target File for Optimization: {ga_res.get('Target_File')}")
+        print(f"  Optimization Time: {ga_res.get('Training_Time_s', 0):.2f} s")
+        print(f"  Sim Calls (Optimization): {ga_res.get('Sim_Calls_Optimization', 0)}")
+        print(f"  Sim Calls (Setup & Final Eval): {ga_res.get('Sim_Calls_Setup_Eval', 0)}")
+        print(f"  Best Solution Calculated Reward: {ga_res.get('Final_Calculated_Reward', 'N/A'):.4f}")
+        print(f"  Best Solution Cost: £{ga_res.get('Final_Cost', 'N/A'):.2f}")
+        print(f"  Proposed Upgrades ({len(ga_res.get('Proposed_Upgrades', []))} pipes changed):")
+        for pipe_id, orig_d, new_d in ga_res.get('Proposed_Upgrades', []):
+            print(f"    - Pipe {pipe_id}: {orig_d:.4f}m -> {new_d:.4f}m")
+
+        print("\nDRL Agent Results:")
+        print(f"  Full Episode Run Time: {drl_res.get('Episode_Run_Time_s', 0):.2f} s")
+        print(f"  Sim Calls (Full Episode): {drl_res.get('Sim_Calls_Episode', 'N/A')}")
+        print(f"  Final Configuration Reward: {drl_res.get('Final_Calculated_Reward', 'N/A'):.4f}")
+        print(f"  Final Configuration Cost: £{drl_res.get('Final_Cost', 'N/A'):.2f}")
+        print(f"  (DRL proposed upgrades for the final step are implicitly in its final network state)")
+
+        current_timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        plot_time_comparison(ga_res, drl_res, scenario_to_run_comparison, current_timestamp)
+        
+        # Save detailed results to a file
+        results_df_single = pd.DataFrame([ga_res, drl_res])
+        results_dir = "Results"
+        os.makedirs(results_dir, exist_ok=True)
+        csv_filename_single = os.path.join(results_dir, f"single_comp_{scenario_to_run_comparison}_{current_timestamp}.csv")
+        results_df_single.to_csv(csv_filename_single, index=False)
+        print(f"\nDetailed comparison results saved to: {csv_filename_single}")
+
+        current_timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        plot_time_comparison(ga_res, drl_res, scenario_to_run_comparison, current_timestamp)
+        plot_reward_comparison(ga_res, drl_res, scenario_to_run_comparison, current_timestamp)
+
+        # Get the original network for comparison
+        original_network = wntr.network.WaterNetworkModel(ga_current_scenario_base_inp_path)
+        
+        # Reconstruct the GA's best network
+        ga_best_network = wntr.network.WaterNetworkModel(ga_current_scenario_base_inp_path)
+        for pipe_id, orig_d, new_d in ga_res.get('Proposed_Upgrades', []):
+            ga_best_network.get_link(pipe_id).diameter = new_d
+
+        drl_final_network = drl_final_sim_metrics.get('network', None)
     
-    total_comparison_time = time.time() - start_total_comparison_time
-    print(f"\nComparison run completed in {total_comparison_time:.2f} seconds.")
+        if drl_final_network is None:
+            # Fall back to creating a reconstructed network if needed
+            print("Note: DRL final network not available in metrics, reconstructing...")
+            drl_final_network = wntr.network.WaterNetworkModel(ga_current_scenario_base_inp_path)
+            
+            # Apply any known actions if available
+            # This is left empty as your current code doesn't have a way to extract these actions
+        
+        # Create and save the pipe diameter comparison
+        pipe_diameter_df = create_pipe_diameter_comparison(
+            ga_best_network, 
+            drl_final_network,
+            original_network,
+            scenario_to_run_comparison,
+            current_timestamp
+        )
 
-    # --- Print and Plot Results ---
-    print("\n--- Comparison Results ---")
-    print(comparison_df.to_string())
-
-    # Save results to CSV
-    results_dir = "Results"
-    os.makedirs(results_dir, exist_ok=True)
-    timestamp_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    csv_filename = os.path.join(results_dir, f"ga_drl_comparison_results_{timestamp_str}.csv")
-    comparison_df.to_csv(csv_filename, index=False)
-    print(f"\nComparison results saved to: {csv_filename}")
-
-    print("\nGenerating comparison plots...")
-    plot_comparison_results(comparison_df, timestamp_str)
-    
-    print("\nAll comparison tasks complete!")
-    plt.show() # Show all plots at the very end if desired, or rely on saved files.
-
-if __name__ == "__main__":
-
-    # Test the GA scipt on a single scenario
-
-    test_scenario = 'anytown_sprawling_3' 
+    print("\n--- Comparison Script Finished ---")

@@ -7,10 +7,14 @@ import os
 import datetime
 from stable_baselines3.common.vec_env import DummyVecEnv
 from typing import Optional, Dict, List  # Add this import line
+import wntr
 
 # Make sure these modules can be imported from the context of this script
 from PPO_Environment import WNTRGymEnv
 from Actor_Critic_Nets2 import GraphPPOAgent
+from Hydraulic_Model import run_epanet_simulation, evaluate_network_performance
+
+from Reward import calculate_reward
 
 class PlottingCallback(BaseCallback):
     """
@@ -50,7 +54,12 @@ class PlottingCallback(BaseCallback):
                     'demand_satisfaction': custom_info.get('demand_satisfaction'),
                     'pipe_changes': custom_info.get('pipe_changes'),
                     'downgraded_pipes': custom_info.get('downgraded_pipes'),
+                    'budget_before_step': custom_info.get('budget_before_step'),
+                    'budget_exceeded': custom_info.get('budget_exceeded', False),
+
+                    'simulation_success': custom_info.get('simulation_success', None),  # Capture any simulation errors
                 }
+
                 self.log_data.append(log_entry)
         return True
 
@@ -146,7 +155,7 @@ def plot_training_and_performance(log_file="training_log.csv"): #
     plot_cols_fig2 = {
         (0,0): ('step_reward', 'Reward by Step', 'Reward', 50), # Added rolling window
         (0,1): ('cost_of_intervention', 'Cost of Intervention by Step', 'Cost', 50), # Added rolling window
-        (1,0): ('pressure_deficit_raw', 'Pressure Deficit by Step', 'Pressure Deficit', 50), # Added rolling window
+        (1,0): ('pressure_deficit', 'Pressure Deficit by Step', 'Pressure Deficit', 50), # Added rolling window
         (1,1): ('demand_satisfaction', 'Demand Satisfaction by Step', 'Demand Satisfaction (%)', 50) # Added rolling window
     }
 
@@ -168,9 +177,7 @@ def plot_training_and_performance(log_file="training_log.csv"): #
 
     return [fig1, fig2]
 
-def plot_action_analysis(log_file="training_log.csv"): #
-    # ... (script and save_path setup, log_file existence check remains similar) ...
-    # log_file_path = os.path.join(os.path.dirname(__file__), "Plots", "training_log.csv") # More robust path
+def plot_action_analysis(log_file="training_log.csv"):
     log_file_path = log_file
     if not os.path.exists(log_file_path):
         print(f"Log file not found: {log_file_path}")
@@ -205,25 +212,61 @@ def plot_action_analysis(log_file="training_log.csv"): #
     ax1.tick_params(axis='y', labelcolor='tab:blue')
 
     # Create a secondary y-axis for step_reward
-    ax2 = ax1.twinx()
-    ax2.set_ylabel('Step Reward', color='tab:red')
+    # ax2 = ax1.twinx()
+    # ax2.set_ylabel('Step Reward', color='tab:red')
 
-    df_step_reward = df_full[['timesteps', 'step_reward']].dropna()
-    if not df_step_reward.empty:
-        ax2.plot(df_step_reward['timesteps'], df_step_reward['step_reward'].rolling(window=50, center=True, min_periods=1).mean(), label='Step Reward (Smoothed)', color='tab:red', alpha=0.7) #
-    ax2.tick_params(axis='y', labelcolor='tab:red')
+    # df_step_reward = df_full[['timesteps', 'step_reward']].dropna()
+    # if not df_step_reward.empty:
+    #     ax2.plot(df_step_reward['timesteps'], df_step_reward['step_reward'].rolling(window=50, center=True, min_periods=1).mean(), label='Step Reward (Smoothed)', color='tab:red', alpha=0.7) #
+    # ax2.tick_params(axis='y', labelcolor='tab:red')
+    
+    # NEW CODE: Add a third y-axis for budget information
+    ax3 = ax1.twinx()
+    # Offset the position to the right to avoid overlapping with ax2
+    ax3.spines['right'].set_position(('outward', 60))
+    ax3.set_ylabel('Budget', color='tab:green')
+    
+    # Plot budget information if available in the log
+    if 'budget_before_step' in df_full.columns:
+        df_budget = df_full[['timesteps', 'budget_before_step']].dropna()
+        if not df_budget.empty:
+            ax3.plot(df_budget['timesteps'], df_budget['budget_before_step'].rolling(window=50, center=True, min_periods=1).mean(), 
+                    label='Budget Available (Smoothed)', color='tab:green', linestyle='-.')
+    
+    # Also plot budget exceeded flags if available
+    if 'budget_exceeded' in df_full.columns:
+        df_budget_exceeded = df_full[['timesteps', 'budget_exceeded']].dropna()
+        if not df_budget_exceeded.empty:
+            # Convert boolean to numeric (1 for exceeded, 0 for not exceeded)
+            exceeded_numeric = df_budget_exceeded['budget_exceeded'].astype(int)
+            # Scale these values to be visible on the budget axis
+            max_budget = df_full['budget_before_step'].max() if 'budget_before_step' in df_full.columns else 1
+            exceeded_scaled = exceeded_numeric * (max_budget * 0.1)  # Scale to 10% of max budget for visibility
+            
+            # Plot budget exceeded events as red dots
+            exceeded_indices = df_budget_exceeded[exceeded_numeric > 0].index
+            if not exceeded_indices.empty:
+                ax3.scatter(
+                    df_budget_exceeded.loc[exceeded_indices, 'timesteps'], 
+                    exceeded_scaled[exceeded_indices],
+                    color='red', marker='x', s=50, label='Budget Exceeded'
+                )
+    
+    ax3.tick_params(axis='y', labelcolor='tab:green')
 
-    # Add legends
+    # Add legends - we need to combine all three axes
     lines1, labels1 = ax1.get_legend_handles_labels()
-    lines2, labels2 = ax2.get_legend_handles_labels()
-    ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper right')
+    # lines2, labels2 = ax2.get_legend_handles_labels()
+    lines3, labels3 = ax3.get_legend_handles_labels()
+    # ax1.legend(lines1 + lines2 + lines3, labels1 + labels2 + labels3, loc='upper right')
+    ax1.legend(lines1 + lines3, labels1 + labels3, loc='upper right') # Combine legends from ax1 and ax3 only
 
     ax1.grid(True, axis='x') # Grid for x-axis
     ax1.grid(True, axis='y', linestyle=':', alpha=0.7, color='tab:blue') # Primary y-axis grid
-    ax2.grid(True, axis='y', linestyle=':', alpha=0.7, color='tab:red') # Secondary y-axis grid
+    # ax2.grid(False)  # No grid for reward axis to avoid cluttering
+    ax3.grid(True, axis='y', linestyle=':', alpha=0.7, color='tab:green') # Budget y-axis grid
 
     fig.tight_layout() #
-    # Saving is now handled in Train_w_Plots.py
     return fig
 
 def plot_upgrades_per_timestep(model_path: str, 
@@ -341,22 +384,80 @@ def plot_upgrades_per_timestep(model_path: str,
 
 # Modify signature and plotting logic
 def plot_final_agent_rewards_by_scenario(drl_scenario_rewards: dict, random_scenario_rewards: dict): #
-    # ... (script and save_path setup remains similar) ...
 
     scenarios = list(drl_scenario_rewards.keys()) # (use DRL scenarios as primary)
-    drl_rewards = [drl_scenario_rewards.get(s, 0) for s in scenarios] # (modified)
-    random_rewards = [random_scenario_rewards.get(s, 0) for s in scenarios] # Get corresponding random rewards
+    initial_rewards = {}  # Dictionary to store initial rewards for each scenario
+
+    pipes = {
+        'Pipe_1': {'diameter': 0.3048, 'unit_cost': 36.58},
+        'Pipe_2': {'diameter': 0.4064, 'unit_cost': 56.32},
+        'Pipe_3': {'diameter': 0.5080, 'unit_cost': 78.71},
+        'Pipe_4': {'diameter': 0.6096, 'unit_cost': 103.47},
+        'Pipe_5': {'diameter': 0.7620, 'unit_cost': 144.60},
+        'Pipe_6': {'diameter': 1.0160, 'unit_cost': 222.62}
+    }
+
+    # Calculate initial rewards for each scenario
+    for scenario in scenarios:
+        if 'hanoi' in scenario:
+            current_network_path = os.path.join(os.path.dirname(__file__), "Modified_nets", "hanoi-3.inp")
+        elif 'anytown' in scenario:
+            current_network_path = os.path.join(os.path.dirname(__file__), "Modified_nets", "anytown-3.inp")
+        else:
+            continue  # Skip if not a recognized scenario
+
+        wn = wntr.network.WaterNetworkModel(current_network_path)
+
+        # original_pipe_diameters = {pipe.id: pipe.diameter for pipe in wn.pipes()}
+        # # Actions are all 0 for length of pipes 
+        # actions = [(pipe.id, 0) for pipe in wn.pipes()]
+
+        original_pipe_ids = []
+        original_diameters = []
+        for pipe, pipe_data in wn.pipes():
+            original_pipe_ids.append(pipe)
+            original_diameters.append(pipe_data.diameter)
+
+        original_pipe_diameters = dict(zip(original_pipe_ids, original_diameters))
+        actions = [(pipe, 0) for pipe, pipe_data in wn.pipes()]  # Actions are all 0 for length of pipes
+
+        # print(f"Original pipe diameters for scenario '{scenario}': {original_pipe_diameters}")
+        # print(f"Actions for scenario '{scenario}': {actions}")
+
+        results = run_epanet_simulation(wn)
+        metrics = evaluate_network_performance(wn, results)
+
+        reward_tuple = calculate_reward(wn, 
+        original_pipe_diameters,  # Dictionary of original pipe diameters
+        actions,                  # List of pipe ID diameter pairs representing the actions
+        pipes,                    # Dictionary of pipe types with unit costs
+        metrics,
+        100,
+        False,
+        disconnections=False,
+        actions_causing_disconnections=None,
+        max_pd = 5000000.0,
+        max_cost = 2000000.0)
+
+        initial_rewards[scenario] = reward_tuple[0]
+
+    drl_rewards = [(drl_scenario_rewards.get(s, 0)/50) for s in scenarios] # (modified)
+    random_rewards = [(random_scenario_rewards.get(s, 0)/50) for s in scenarios] # Get corresponding random rewards
+    initial_network_rewards = [initial_rewards.get(s, 0) for s in scenarios]  # Get initial network rewards
 
     x = np.arange(len(scenarios))  # the label locations
-    width = 0.35  # the width of the bars
+    width = 0.25  # Reduced width to fit three bars side by side
+
+    # assign magma collour scheme to the bars
 
     fig, ax = plt.subplots(figsize=(18, 9)) # (adjusted size)
-    rects1 = ax.bar(x - width/2, drl_rewards, width, label='DRL Agent', color='deepskyblue')
-    rects2 = ax.bar(x + width/2, random_rewards, width, label='Random Policy', color='lightcoral')
+    rects1 = ax.bar(x - width, drl_rewards, width, label='DRL Agent') # (color changed)
+    rects2 = ax.bar(x, random_rewards, width, label='Random Policy') # (added alpha for transparency)
+    rects3 = ax.bar(x + width, initial_network_rewards, width, label='Initial Network') # (added alpha for transparency)
 
     ax.set_xlabel('Scenario') #
     ax.set_ylabel('Average Reward') #
-    ax.set_title('Final Agent Reward by Scenario vs. Random Policy') # (title updated)
+    ax.set_title('Final Agent Reward by Scenario vs. Random Policy and Initial Network') # (updated title)
     ax.set_xticks(x)
     ax.set_xticklabels(scenarios, rotation=45, ha='right') #
     ax.legend()
@@ -365,7 +466,152 @@ def plot_final_agent_rewards_by_scenario(drl_scenario_rewards: dict, random_scen
     # Add labels on top of bars
     ax.bar_label(rects1, padding=3, fmt='%.2f')
     ax.bar_label(rects2, padding=3, fmt='%.2f')
+    ax.bar_label(rects3, padding=3, fmt='%.2f')
 
     fig.tight_layout() #
     # Saving is now handled in Train_w_Plots.py
     return fig #
+
+def test_plot_final_agent_rewards_by_scenario():
+    """
+    Test function for plot_final_agent_rewards_by_scenario
+    Creates sample data and calls the plotting function
+    """
+    # Create sample scenario rewards for DRL agent
+    drl_scenario_rewards = {
+        'hanoi_scenario1': 250.0,
+        'hanoi_scenario2': 300.0,
+        'anytown_scenario1': 200.0,
+        'anytown_scenario2': 180.0
+    }
+    
+    # Create sample scenario rewards for random policy
+    random_scenario_rewards = {
+        'hanoi_scenario1': 100.0,
+        'hanoi_scenario2': 120.0,
+        'anytown_scenario1': 80.0,
+        'anytown_scenario2': 90.0
+    }
+    
+    # Call the plotting function
+    fig = plot_final_agent_rewards_by_scenario(drl_scenario_rewards, random_scenario_rewards)
+    
+    # Save the plot
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    plots_dir = os.path.join(base_dir, "Plots", "Scenario_Comparison")
+    os.makedirs(plots_dir, exist_ok=True)
+    
+    save_path = os.path.join(plots_dir, "scenario_rewards_comparison_test.png")
+    fig.savefig(save_path)
+    print(f"Test plot saved to {save_path}")
+    
+    # Display the plot
+    plt.show()
+    
+    return fig
+
+def plot_simulation_errors_against_reward(training_log, save_path=None):
+    """
+    Plots the simulation success (boolean) and reward by time step from the training log
+    """
+    
+    log_file_path = training_log
+    if not os.path.exists(log_file_path): # Use log_file_path
+        print(f"Log file not found: {log_file_path}")
+        return [None, None] # Return list of Nones
+
+    df_full = pd.read_csv(log_file_path) # Load full data
+
+    if df_full.empty:
+        print(f"Log file {log_file_path} is empty. No data to plot.")
+        return [None, None]
+
+    fig, ax1 = plt.subplots(figsize=(12, 8))
+    ax1.set_title('Simulation Success and Reward by Time Step', fontsize=16)
+    ax1.set_xlabel('Timesteps')
+
+    # Plot simulation success on the primary y-axis (ax1)
+    ax1.set_ylabel('Simulation Success', color='tab:blue')
+
+    df_success = df_full[['timesteps', 'simulation_success']].dropna()
+
+    if not df_success.empty:
+        # Convert boolean to 0/1 if needed
+        if df_success['simulation_success'].dtype == bool:
+            df_success['simulation_success'] = df_success['simulation_success'].astype(int)
+        
+        # Create a scatter plot for simulation success (0 = False, 1 = True)
+        ax1.scatter(df_success['timesteps'], df_success['simulation_success'], 
+                   label='Simulation Success', color='tab:blue', alpha=0.5, s=10)
+        
+        # Add a rolling average line to show the success rate trend
+        window_size = min(100, len(df_success) // 10) if len(df_success) > 10 else 1
+        if window_size == 0: window_size = 1
+        
+        rolling_success = df_success['simulation_success'].rolling(window=window_size, 
+                                                                  center=True, 
+                                                                  min_periods=1).mean()
+        ax1.plot(df_success['timesteps'], rolling_success, 
+                label=f'Success Rate (Avg over {window_size} steps)', 
+                color='darkblue', linewidth=2)
+        
+        # Set y-axis limits for simulation success (with some padding)
+        ax1.set_ylim(-0.1, 1.1)
+        ax1.set_yticks([0, 1])
+        ax1.set_yticklabels(['Failure', 'Success'])
+    else:
+        print("No data for 'simulation_success' after dropping NaNs.")
+
+    ax1.tick_params(axis='y', labelcolor='tab:blue')
+
+    # Create a secondary y-axis for reward
+    ax2 = ax1.twinx()
+    ax2.set_ylabel('Reward', color='tab:red')
+
+    df_reward = df_full[['timesteps', 'step_reward']].dropna()
+
+    if not df_reward.empty:
+        ax2.plot(df_reward['timesteps'], df_reward['step_reward'], 
+                label='Step Reward', color='tab:red', alpha=0.7)
+        
+        # Add a rolling average line for rewards
+        window_size = min(100, len(df_reward) // 10) if len(df_reward) > 10 else 1
+        if window_size == 0: window_size = 1
+        
+        rolling_reward = df_reward['step_reward'].rolling(window=window_size, 
+                                                         center=True, 
+                                                         min_periods=1).mean()
+        ax2.plot(df_reward['timesteps'], rolling_reward, 
+                label=f'Reward (Avg over {window_size} steps)', 
+                color='darkred', linewidth=2)
+    else:
+        print("No data for 'step_reward' after dropping NaNs.")
+    
+    ax2.tick_params(axis='y', labelcolor='tab:red')
+
+    # Add legends
+    lines1, labels1 = ax1.get_legend_handles_labels()
+    lines2, labels2 = ax2.get_legend_handles_labels()
+    ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper center', bbox_to_anchor=(0.5, 1.15), ncol=4, frameon=False)
+
+    ax1.grid(True, axis='x')
+    ax1.grid(True, axis='y', linestyle=':', alpha=0.7, color='tab:blue')
+    ax2.grid(False)
+
+    fig.tight_layout()
+    if save_path:
+        plt.savefig(save_path)
+        print(f"Plot saved to {save_path}")
+    else:
+        print("No save path provided. Plot will not be saved.")
+    
+    return fig
+
+if __name__ == "__main__":
+    # Example usage of the plotting functions
+    # This block is for testing purposes and can be removed in production code.
+
+    # Plot action analysis
+
+    # Test scenario reward plot
+    test_plot_final_agent_rewards_by_scenario()

@@ -5,6 +5,7 @@ import random
 import matplotlib.pyplot as plt
 import sys
 import os
+import networkx as nx
 
 script = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(script)
@@ -34,7 +35,7 @@ def generate_large_looped_wdn(grid_size=10, spacing=100, demand=0.01):
     for node in G.nodes:
         node_id = f"J_{node[0]}_{node[1]}"
         coord = (node[0] * spacing, node[1] * spacing)
-        wn.add_junction(node_id, coordinates=coord)
+        wn.add_junction(node_id, base_demand = random.randint(1, 10), coordinates=coord)
 
     # Add pipes
     for i, (u, v) in enumerate(G.edges):
@@ -43,11 +44,11 @@ def generate_large_looped_wdn(grid_size=10, spacing=100, demand=0.01):
         wn.add_pipe(f"P_{i}", start, end, length=spacing, diameter=0.3, roughness=100)
 
     # Add reservoir at one corner
-    wn.add_reservoir("R1", coordinates=(-100, -100))
+    wn.add_reservoir("R1", base_head = 100, coordinates=(-100, -100))
     wn.add_pipe("PR1", "R1", "J_0_0", length=100, diameter=0.3, roughness=100)
 
-    # Randomly remove 20% of the pipes
-    pipes_to_remove = random.sample(wn.pipe_name_list, int(len(wn.pipe_name_list) * 0.5))
+    # Randomly remove 50% of the pipes and any pipes connected
+    pipes_to_remove = random.sample(wn.pipe_name_list, int(len(wn.pipe_name_list) * 0.4))
     for pipe in pipes_to_remove:
         wn.remove_link(pipe)
 
@@ -78,51 +79,35 @@ def remove_disconnected_nodes(wn):
     print(f"Removed {len(disconnected_nodes)} disconnected nodes.")
     return wn
 
-import networkx as nx
-
 def prune_unconnected_to_reservoir(wn):
-    # Get the full undirected graph of the network
-    G = wn.to_graph().to_undirected()
+    """
+    This function identifies all nodes that have a path to the reservoir
+    and removes any nodes and pipes that don't.
+    """
     
-    # Identify the reservoir node
-    reservoir_node = next((n for n in wn.reservoir_name_list), None)
+    G = wn.to_graph().to_undirected()
+    reservoir_node = wn.reservoir_name_list[0] if wn.reservoir_name_list else None
 
-    # Return a network where every node has a path to the reservoir
-    if reservoir_node is not None:
-        # Get the subgraph that is connected to the reservoir
-        connected_nodes = nx.node_connected_component(G, reservoir_node)
-        
-        # Add connected nodes to a new WaterNetworkModel
-        wn_pruned = wntr.network.WaterNetworkModel()
+    for node in wn.junction_name_list:
+        if node != reservoir_node and not nx.has_path(G, reservoir_node, node):
 
-        for node in connected_nodes:
-            wn_pruned.add_junction(node, coordinates=wn.get_node(node).coordinates)
+            for pipe in wn.get_links_for_node(node):
+                wn.remove_link(pipe)
+            wn.remove_node(node)
 
-        for pipe in wn.pipe_name_list:
-            start_node = wn.get_link(pipe).start_node_name
-            end_node = wn.get_link(pipe).end_node_name
-            
-            if start_node in connected_nodes and end_node in connected_nodes:
-                wn_pruned.add_pipe(pipe, start_node, end_node, 
-                                   length=wn.get_link(pipe).length, 
-                                   diameter=wn.get_link(pipe).diameter, 
-                                   roughness=wn.get_link(pipe).roughness)
-                
-    # Add reservoir node back to the pruned network
-    if reservoir_node is not None:
-        wn_pruned.add_reservoir(reservoir_node, coordinates=wn.get_node(reservoir_node).coordinates)
-        # Add a pipe from the reservoir to one of the junctions
-        if wn_pruned.junction_name_list:
-            first_junction = wn_pruned.junction_name_list[0]
-            wn_pruned.add_pipe(f"PR_{reservoir_node}", reservoir_node, first_junction)
-
-    return wn_pruned
+    return wn
 
 def apply_pipe_diameters_and_roughness(wn, pipes):
-    for pipe_name, properties in pipes.items():
-        if pipe_name in wn.pipe_name_list:
-            wn.get_link(pipe_name).diameter = properties['diameter']
-            wn.get_link(pipe_name).roughness = random.randint(60, 150)  # Assuming unit_cost is used as roughness
+     # For each pipe in the network, randomly assign a diameter value from the pipes dictionary
+
+    diams = [pipe['diameter'] for pipe in pipes.values()]
+
+    for pipe in wn.pipe_name_list:
+        # Randomly select a pipe diameter and roughness from the provided dictionary
+        pipe_diameter = random.choice(diams) * 1000
+        wn.get_link(pipe).diameter = pipe_diameter
+        wn.get_link(pipe).roughness = random.randint(60, 150)
+
     return wn
 
 # In the main section:
@@ -144,6 +129,10 @@ if __name__ == "__main__":
 
     wn = apply_pipe_diameters_and_roughness(wn, pipes)
 
+    # wntr.graphics.plot_network(wn, title="Large Looped Water Distribution Network", 
+    #                             node_size=50)
+    # plt.show()
+
     # Generate elevation map with size matching our network dimensions
     # First, get the bounds of our network to size the elevation map appropriately
     node_coords = [wn.get_node(node).coordinates for node in wn.node_name_list]
@@ -161,7 +150,7 @@ if __name__ == "__main__":
         elevation_data = generate_elevation_map(
             area_size=(width, height), 
             elevation_range=(0, 100),
-            num_peaks=10, 
+            num_peaks=5, 
             landscape_type='flat', 
             seed=1
         )
@@ -192,16 +181,37 @@ if __name__ == "__main__":
                 node.base_head = elevation
             else:
                 # For junctions, set the elevation
-                node.elevation = 100 # Hard set reservoir elevation to 100m for max
+                node.elevation = elevation # Hard set reservoir elevation to 100m for max
+
+    # Add a power pump to the pipe connecting the reservoir to the rest of the network
+    reservoir_node = wn.reservoir_name_list[0] if wn.reservoir_name_list else None
+    # Find the junction connected to the reservoir
+    if reservoir_node:
+        for pipe_name in wn.get_links_for_node(reservoir_node):
+            if wn.get_link(pipe_name).start_node_name == reservoir_node:
+                start_node = wn.get_link(pipe_name).start_node_name
+                end_node = wn.get_link(pipe_name).end_node_name
+                wn.add_pump("Pump_1", start_node, end_node, pump_type='POWER', pump_parameter=50)
+                break
+
+    # Apply demand curve
+
+    # Generate future networks
+
+    # Initial visualisation
+    wntr.graphics.plot_network(wn, title="Large Looped Water Distribution Network", 
+                                node_size=50, node_attribute='elevation', add_colorbar=True)
+    plt.show()
     
     # Run the hydraulic simulation
-    sim = wntr.sim.EpanetSimulator(wn)
-    results = sim.run_sim()
+    # sim = wntr.sim.EpanetSimulator(wn)
+    # results = sim.run_sim()
+
+    results = run_epanet_simulation(wn)
+    print("Hydraulic simulation completed.")
 
     # Visualise the network
     visualise_network(wn, results, 
                       title="Large Looped Water Distribution Network",
-                      save_path="large_looped_network.png", 
-                      mode='3d', show=True)
-
-    # Apply demand curve
+                      save_path=None, 
+                      mode='2d', show=True)
