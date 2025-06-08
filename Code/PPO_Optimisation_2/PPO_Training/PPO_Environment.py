@@ -124,12 +124,6 @@ class WNTRGymEnv(gym.Env):
         unspent_budget = budget_available_for_this_step - cost_of_intervention
         carry_over_budget = max(0.0, unspent_budget) # No negative carry-over (debt)
 
-        # Update budget for the *next* major time step
-        # This happens after the current step's actions and rewards are processed.
-        # The next call to step (for the next pipe) will use this new budget IF it's a new major step.
-        # This logic is better placed after current_time_step is incremented.
-        # For now, this method will return necessary info, and step() will finalize next step's budget.
-
         return penalised_reward, budget_exceeded, budget_available_for_this_step, carry_over_budget
 
 
@@ -526,17 +520,21 @@ class WNTRGymEnv(gym.Env):
                     self._apply_budget_penalty_and_update(cost_of_intervention, reward)
                 reward = final_reward_for_step # This is the reward agent gets for this major step
 
-                info = { #
+                if budget_exceeded:
+                    terminated = True # End the episode if budget exceeded
+
+                info = { 
                     'reward': reward, 
                     'cost_of_intervention': cost_of_intervention,
-                    'pressure_deficit': pd_ratio_val, # Using the modified key for plotting
+                    'pressure_deficit': pd_ratio_val,
                     'pressure_deficit_raw': metrics.get('total_pressure_deficit', 0.0),
                     'demand_satisfaction': demand_satisfaction_val, 
                     'pipe_changes': len(self.actions_this_timestep),
                     'budget_before_step': budget_at_start_of_step,
                     'budget_exceeded': budget_exceeded,
+                    'budget_terminated': budget_exceeded,  # New flag to track termination reason
                     'budget_carried_over': carry_over,
-                    'simulation_success': sim_success, # Indicate successful simulation
+                    'simulation_success': sim_success,
                 }
 
             else: # Simulation failed

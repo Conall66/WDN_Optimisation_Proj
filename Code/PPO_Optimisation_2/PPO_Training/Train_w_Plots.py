@@ -559,7 +559,7 @@ def train_just_hanoi(single_scenario = False):
 
     # print(f"Number of CPU cores available: {num_cpu}")
 
-    total_timesteps = 49000 # Short run through to check functionality
+    total_timesteps = 100000 # Short run through to check functionality
     all_scenarios = [
         'anytown_densifying_1', 'anytown_densifying_2', 'anytown_densifying_3', 'anytown_sprawling_1', 'anytown_sprawling_2', 'anytown_sprawling_3',
         'hanoi_densifying_1', 'hanoi_densifying_2', 'hanoi_densifying_3', 'hanoi_sprawling_1', 'hanoi_sprawling_2', 'hanoi_sprawling_3'
@@ -594,19 +594,19 @@ def train_just_hanoi(single_scenario = False):
 
     start_time = time.time()
 
-    vec_env_hanoi = SubprocVecEnv([lambda: WNTRGymEnv(pipes, 
+    # vec_env_hanoi = SubprocVecEnv([lambda: WNTRGymEnv(pipes, 
+                                                    #   hanoi_scenarios, current_max_cost=global_max_cost, current_max_pd=global_max_pd, 
+                                                    #   initial_budget_per_step=budget_per_step,
+                                                    #   start_of_episode_budget=initial_budget,
+                                                    #   budget_exceeded_penalty_type=budget_penalty_type,
+                                                    #   budget_penalty_factor = budget_penalty_factor) for _ in range(num_cpu)], start_method='spawn')
+
+    vec_env_hanoi = DummyVecEnv([lambda: WNTRGymEnv(pipes, 
                                                       hanoi_scenarios, current_max_cost=global_max_cost, current_max_pd=global_max_pd, 
                                                       initial_budget_per_step=budget_per_step,
                                                       start_of_episode_budget=initial_budget,
                                                       budget_exceeded_penalty_type=budget_penalty_type,
-                                                      budget_penalty_factor = budget_penalty_factor) for _ in range(num_cpu)], start_method='spawn')
-
-    # vec_env_hanoi = DummyVecEnv([lambda: WNTRGymEnv(pipes, 
-    #                                                   hanoi_scenarios, current_max_cost=global_max_cost, current_max_pd=global_max_pd, 
-    #                                                   initial_budget_per_step=budget_per_step,
-    #                                                   start_of_episode_budget=initial_budget,
-    #                                                   budget_exceeded_penalty_type=budget_penalty_type,
-    #                                                   budget_penalty_factor = budget_penalty_factor)])
+                                                      budget_penalty_factor = budget_penalty_factor)])
 
     agent1 = GraphPPOAgent(vec_env_hanoi, pipes, **ppo_config)
     
@@ -664,7 +664,7 @@ def train_both():
 
     # print(f"Number of CPU cores available: {num_cpu}")
 
-    total_timesteps = 49000 # Short run through to check functionality
+    total_timesteps = 1000000 # Short run through to check functionality
     all_scenarios = [
         'anytown_densifying_1', 'anytown_densifying_2', 'anytown_densifying_3', 'anytown_sprawling_1', 'anytown_sprawling_2', 'anytown_sprawling_3',
         'hanoi_densifying_1', 'hanoi_densifying_2', 'hanoi_densifying_3', 'hanoi_sprawling_1', 'hanoi_sprawling_2', 'hanoi_sprawling_3'
@@ -816,45 +816,45 @@ if __name__ == "__main__":
     
     # train_just_anytown()
     # # train_multiple()
-    # train_just_hanoi(single_scenario=False)
+    train_just_hanoi(single_scenario=False)
     # train_both()
 
-    pipes_config = {
-        'Pipe_1': {'diameter': 0.3048, 'unit_cost': 36.58},
-        'Pipe_2': {'diameter': 0.4064, 'unit_cost': 56.32},
-        'Pipe_3': {'diameter': 0.5080, 'unit_cost': 78.71},
-        'Pipe_4': {'diameter': 0.6096, 'unit_cost': 103.47},
-        'Pipe_5': {'diameter': 0.7620, 'unit_cost': 144.60},
-        'Pipe_6': {'diameter': 1.0160, 'unit_cost': 222.62}
-    }
+    # pipes_config = {
+    #     'Pipe_1': {'diameter': 0.3048, 'unit_cost': 36.58},
+    #     'Pipe_2': {'diameter': 0.4064, 'unit_cost': 56.32},
+    #     'Pipe_3': {'diameter': 0.5080, 'unit_cost': 78.71},
+    #     'Pipe_4': {'diameter': 0.6096, 'unit_cost': 103.47},
+    #     'Pipe_5': {'diameter': 0.7620, 'unit_cost': 144.60},
+    #     'Pipe_6': {'diameter': 1.0160, 'unit_cost': 222.62}
+    # }
 
-    # Anytown scenarios
-    scenarios_list = [
-        'anytown_densifying_1', 'anytown_densifying_2', 'anytown_densifying_3',
-        'anytown_sprawling_1', 'anytown_sprawling_2', 'anytown_sprawling_3', 
-        'hanoi_densifying_1', 'hanoi_densifying_2', 'hanoi_densifying_3',
-        'hanoi_sprawling_1', 'hanoi_sprawling_2', 'hanoi_sprawling_3'
-    ]
+    # # Anytown scenarios
+    # scenarios_list = [
+    #     'anytown_densifying_1', 'anytown_densifying_2', 'anytown_densifying_3',
+    #     'anytown_sprawling_1', 'anytown_sprawling_2', 'anytown_sprawling_3', 
+    #     'hanoi_densifying_1', 'hanoi_densifying_2', 'hanoi_densifying_3',
+    #     'hanoi_sprawling_1', 'hanoi_sprawling_2', 'hanoi_sprawling_3'
+    # ]
 
-    anytown_scenarios = [s for s in scenarios_list if 'anytown' in s]
-    hanoi_scenarios = [s for s in scenarios_list if 'hanoi' in s]
+    # anytown_scenarios = [s for s in scenarios_list if 'anytown' in s]
+    # hanoi_scenarios = [s for s in scenarios_list if 'hanoi' in s]
 
-    saved_model_path = "agents/agent1_both_20250605_150838"
-    log_path = "Plots/training_log_agent1_both_20250605_150838.csv"
+    # saved_model_path = "agents/agent1_both_20250605_150838"
+    # log_path = "Plots/training_log_agent1_both_20250605_150838.csv"
     
-    if os.path.exists(saved_model_path + ".zip"):
+    # if os.path.exists(saved_model_path + ".zip"):
 
-    #      inspect_agent_actions(saved_model_path, pipes_config, scenarios_list, target_scenario_name='anytown_sprawling_2')
-        # plot_pipe_diameters_heatmap_over_time(
-        #     model_path=saved_model_path,
-        #     pipes_config=pipes_config,
-        #     scenarios_list=anytown_scenarios,
-        #     num_episodes_for_data=24,  # Number of episodes to average over
-        #     target_scenario_name='hanoi_sprawling_2',  # Specify the scenario to visualise
-        #     save_dir="Plots/Pipe_Diameter_Evolution/Anytown_Agent_20250604_180536"
+    # #      inspect_agent_actions(saved_model_path, pipes_config, scenarios_list, target_scenario_name='anytown_sprawling_2')
+    #     # plot_pipe_diameters_heatmap_over_time(
+    #     #     model_path=saved_model_path,
+    #     #     pipes_config=pipes_config,
+    #     #     scenarios_list=anytown_scenarios,
+    #     #     num_episodes_for_data=24,  # Number of episodes to average over
+    #     #     target_scenario_name='hanoi_sprawling_2',  # Specify the scenario to visualise
+    #     #     save_dir="Plots/Pipe_Diameter_Evolution/Anytown_Agent_20250604_180536"
 
-        # )
+    #     # )
 
-        drl1_results = evaluate_agent_by_scenario(saved_model_path, pipes_config, scenarios_list)
-        rand1_results = evaluate_random_policy_by_scenario(pipes_config, scenarios_list)
-        generate_and_save_plots(saved_model_path, log_path, drl1_results, rand1_results, pipes_config, scenarios_list)
+    #     drl1_results = evaluate_agent_by_scenario(saved_model_path, pipes_config, scenarios_list)
+    #     rand1_results = evaluate_random_policy_by_scenario(pipes_config, scenarios_list)
+    #     generate_and_save_plots(saved_model_path, log_path, drl1_results, rand1_results, pipes_config, scenarios_list)
