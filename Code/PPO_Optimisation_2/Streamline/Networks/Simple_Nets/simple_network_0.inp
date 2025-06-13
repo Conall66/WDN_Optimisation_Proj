@@ -2,26 +2,26 @@
 
 [JUNCTIONS]
 ;ID                      Elevation       Demand Pattern                 
- J1                                 0    15850.323141                            ;
- J2                                 0    15850.323141                            ;
- J3                                 0    15850.323141                            ;
- J4                                 0    15850.323141                            ;
- J5                                 0    15850.323141                            ;
+ J1                                 0    317.00646283                            ;
+ J2                        6.56167979    317.00646283                            ;
+ J3                       9.842519685    317.00646283                            ;
+ J4                       3.280839895    317.00646283                            ;
+ J5                                 0    317.00646283                            ;
 
 [RESERVOIRS]
 ;ID                                   Head                  Pattern
- R1                       328.0839895                            ;
+ R1                      49.212598425                            ;
 
 [TANKS]
 ;ID                              Elevation           Init Level            Min Level            Max Level             Diameter           Min Volume Volume Curve         Overflow            
 
 [PIPES]
 ;ID                   Node1                Node2                              Length             Diameter            Roughness           Minor Loss               Status
- P1                   R1                   J1                       328.0839895    11.811023622             100               0                 Open   ;
- P2                   J1                   J2                       328.0839895    11.811023622             100               0                 Open   ;
- P3                   J2                   J3                       328.0839895    11.811023622             100               0                 Open   ;
- P4                   J3                   J4                       328.0839895    11.811023622             100               0                 Open   ;
- P5                   J4                   J5                       328.0839895    11.811023622             100               0                 Open   ;
+ P1                   R1                   J1                       3280.839895    11.811023622             100               0                 Open   ;
+ P2                   J1                   J2                       3280.839895    11.811023622              60               0                 Open   ;
+ P3                   J2                   J3                       3280.839895    11.811023622              60               0                 Open   ;
+ P4                   J3                   J4                       3280.839895    11.811023622              60               0                 Open   ;
+ P5                   J4                   J5                       3280.839895    11.811023622              60               0                 Open   ;
 
 [PUMPS]
 ;ID                   Node1                Node2                Properties          

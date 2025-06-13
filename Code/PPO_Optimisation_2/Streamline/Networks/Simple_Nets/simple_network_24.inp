@@ -2,26 +2,34 @@
 
 [JUNCTIONS]
 ;ID                      Elevation       Demand Pattern                 
- J1                                 0    15850.323141                            ;
- J2                                 0    15850.323141                            ;
- J3                                 0    15850.323141                            ;
- J4                                 0    15850.323141                            ;
- J5                                 0    15850.323141                            ;
+ J1                                 0             7.2                            ;
+ J2                                 2             7.2                            ;
+ J3                                 3             7.2                            ;
+ J4                                 1             7.2                            ;
+ J5                                 0             7.2                            ;
+ J6                                 0             7.2                            ;
+ J7                                 0             7.2                            ;
+ J8                                 0             7.2                            ;
+ J9                                 0              72                            ;
 
 [RESERVOIRS]
 ;ID                                   Head                  Pattern
- R1                       328.0839895                            ;
+ R1                                15                            ;
 
 [TANKS]
 ;ID                              Elevation           Init Level            Min Level            Max Level             Diameter           Min Volume Volume Curve         Overflow            
 
 [PIPES]
 ;ID                   Node1                Node2                              Length             Diameter            Roughness           Minor Loss               Status
- P1                   R1                   J1                       328.0839895    11.811023622             100               0                 Open   ;
- P2                   J1                   J2                       328.0839895    11.811023622             100               0                 Open   ;
- P3                   J2                   J3                       328.0839895    11.811023622             100               0                 Open   ;
- P4                   J3                   J4                       328.0839895    11.811023622             100               0                 Open   ;
- P5                   J4                   J5                       328.0839895    11.811023622             100               0                 Open   ;
+ P1                   R1                   J1                              1000             300             100               0                 Open   ;
+ P2                   J1                   J2                              1000             300              60               0                 Open   ;
+ P3                   J2                   J3                              1000             300              60               0                 Open   ;
+ P4                   J3                   J4                              1000             300              60               0                 Open   ;
+ P5                   J4                   J5                              1000             300              60               0                 Open   ;
+ P6                   J5                   J6                              1000             300             100               0                 Open   ;
+ P7                   J6                   J7                              1000             300             100               0                 Open   ;
+ P8                   J7                   J8                              1000             300             100               0                 Open   ;
+ P9                   J8                   J9                              1000             300             100               0                 Open   ;
 
 [PUMPS]
 ;ID                   Node1                Node2                Properties          
@@ -49,7 +57,8 @@
 [RULES]
 
 [ENERGY]
-GLOBAL PRICE           0.0000
+GLOBAL EFFICIENCY      100.0000
+GLOBAL PRICE           936000.0000
 
 [EMITTERS]
 ;ID        Flow coefficient
@@ -72,7 +81,7 @@ GLOBAL PRICE           0.0000
 ;Tank ID             Model Fraction
 
 [TIMES]
-DURATION             00:00:00
+DURATION             24:00:00
 HYDRAULIC TIMESTEP   01:00:00
 QUALITY TIMESTEP     00:06:00
 PATTERN TIMESTEP     01:00:00
@@ -86,12 +95,12 @@ STATISTIC            NONE
 [REPORT]
 
 [OPTIONS]
-UNITS                GPM                 
+UNITS                CMH                 
 HEADLOSS             H-W                 
 SPECIFIC GRAVITY     1
 VISCOSITY            1
-TRIALS               200
-ACCURACY             0.001
+TRIALS               100
+ACCURACY             0.01
 CHECKFREQ            2
 MAXCHECK             10
 UNBALANCED           STOP                
@@ -110,6 +119,10 @@ J2                 20.000000000         10.000000000
 J3                 30.000000000         10.000000000
 J4                 40.000000000         20.000000000
 J5                 50.000000000         20.000000000
+J6                 62.000000000         12.000000000
+J7                 80.000000000         16.000000000
+J8                 99.000000000         14.000000000
+J9                112.000000000         12.000000000
 
 [VERTICES]
 ;Link      X-Coord    Y-Coord   

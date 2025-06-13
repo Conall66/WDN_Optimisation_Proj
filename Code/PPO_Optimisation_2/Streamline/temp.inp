@@ -1,33 +1,30 @@
+; Filename: Networks/Simple_Nets\simple_network_2.inp
+; WNTR: 1.3.2
+; Created: 2025-06-13 15:11:22
 [TITLE]
 
 [JUNCTIONS]
 ;ID                      Elevation       Demand Pattern                 
- J1                                 0    15850.323141                            ;
- J2                                 0    15850.323141                            ;
- J3                                 0    15850.323141                            ;
- J4                                 0    15850.323141                            ;
- J5                                 0    15850.323141                            ;
- J6                                 0    158503.23141                            ;
- J7                                 0    158503.23141                            ;
- J8                                 0    158503.23141                            ;
+ J1                                 0              72                            ;
+ J2                                 2              72                            ;
+ J3                                 3              72                            ;
+ J4                                 1              72                            ;
+ J5                                 0              72                            ;
 
 [RESERVOIRS]
 ;ID                                   Head                  Pattern
- R1                       328.0839895                            ;
+ R1                                15                            ;
 
 [TANKS]
 ;ID                              Elevation           Init Level            Min Level            Max Level             Diameter           Min Volume Volume Curve         Overflow            
 
 [PIPES]
 ;ID                   Node1                Node2                              Length             Diameter            Roughness           Minor Loss               Status
- P1                   R1                   J1                       328.0839895    11.811023622             100               0                 Open   ;
- P2                   J1                   J2                       328.0839895    11.811023622             100               0                 Open   ;
- P3                   J2                   J3                       328.0839895    11.811023622             100               0                 Open   ;
- P4                   J3                   J4                       328.0839895    11.811023622             100               0                 Open   ;
- P5                   J4                   J5                       328.0839895    11.811023622             100               0                 Open   ;
- P6                   J5                   J6                       328.0839895    11.811023622             100               0                 Open   ;
- P7                   J6                   J7                       328.0839895    11.811023622             100               0                 Open   ;
- P8                   J7                   J8                       328.0839895    11.811023622             100               0                 Open   ;
+ P1                   R1                   J1                              1000           406.4             100               0                 Open   ;
+ P2                   J1                   J2                              1000             508              60               0                 Open   ;
+ P3                   J2                   J3                              1000           304.8              60               0                 Open   ;
+ P4                   J3                   J4                              1000             508              60               0                 Open   ;
+ P5                   J4                   J5                              1000           609.6              60               0                 Open   ;
 
 [PUMPS]
 ;ID                   Node1                Node2                Properties          
@@ -55,7 +52,8 @@
 [RULES]
 
 [ENERGY]
-GLOBAL PRICE           0.0000
+GLOBAL EFFICIENCY      100.0000
+GLOBAL PRICE           936000.0000
 
 [EMITTERS]
 ;ID        Flow coefficient
@@ -78,7 +76,7 @@ GLOBAL PRICE           0.0000
 ;Tank ID             Model Fraction
 
 [TIMES]
-DURATION             00:00:00
+DURATION             24:00:00
 HYDRAULIC TIMESTEP   01:00:00
 QUALITY TIMESTEP     00:06:00
 PATTERN TIMESTEP     01:00:00
@@ -92,16 +90,15 @@ STATISTIC            NONE
 [REPORT]
 
 [OPTIONS]
-UNITS                GPM                 
+UNITS                CMH                 
 HEADLOSS             H-W                 
 SPECIFIC GRAVITY     1
 VISCOSITY            1
-TRIALS               200
-ACCURACY             0.001
+TRIALS               100
+ACCURACY             0.01
 CHECKFREQ            2
 MAXCHECK             10
 UNBALANCED           STOP                
-PATTERN              1                   
 DEMAND MULTIPLIER    1
 EMITTER EXPONENT     0.5
 QUALITY              NONE                
@@ -110,15 +107,12 @@ TOLERANCE            0.01
 
 [COORDINATES]
 ;Node      X-Coord    Y-Coord   
-R1                  0.000000000          0.000000000
 J1                 10.000000000          0.000000000
 J2                 20.000000000         10.000000000
 J3                 30.000000000         10.000000000
 J4                 40.000000000         20.000000000
 J5                 50.000000000         20.000000000
-J6                 62.000000000         27.000000000
-J7                 79.000000000         31.000000000
-J8                 89.000000000         31.000000000
+R1                  0.000000000          0.000000000
 
 [VERTICES]
 ;Link      X-Coord    Y-Coord   

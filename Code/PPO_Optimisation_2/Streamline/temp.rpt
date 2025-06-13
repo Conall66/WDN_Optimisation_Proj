@@ -1,4 +1,4 @@
-  Page 1                                    Sun Jun 08 17:47:11 2025
+  Page 1                                    Fri Jun 13 15:11:22 2025
 
   ******************************************************************
   *                           E P A N E T                          *
@@ -9,32 +9,80 @@
   
    
       Input Data File ................... temp.inp
-      Number of Junctions................ 8
+      Number of Junctions................ 5
       Number of Reservoirs............... 1
       Number of Tanks ................... 0
-      Number of Pipes ................... 8
+      Number of Pipes ................... 5
       Number of Pumps ................... 0
       Number of Valves .................. 0
       Headloss Formula .................. Hazen-Williams
       Nodal Demand Model ................ DDA
       Hydraulic Timestep ................ 1.00 hrs
-      Hydraulic Accuracy ................ 0.001000
+      Hydraulic Accuracy ................ 0.010000
       Status Check Frequency ............ 2
       Maximum Trials Checked ............ 10
       Damping Limit Threshold ........... 0.000000
-      Maximum Trials .................... 200
+      Maximum Trials .................... 100
       Quality Analysis .................. None
       Specific Gravity .................. 1.00
       Relative Kinematic Viscosity ...... 1.00
       Relative Chemical Diffusivity ..... 1.00
       Demand Multiplier ................. 1.00
-      Total Duration .................... 0.00 hrs
+      Total Duration .................... 24.00 hrs
       Reporting Criteria:
          No Nodes
          No Links
    
-  Analysis begun Sun Jun 08 17:47:11 2025
+  Analysis begun Fri Jun 13 15:11:22 2025
 
   WARNING: Negative pressures at 0:00:00 hrs.
    
-  Analysis ended Sun Jun 08 17:47:11 2025
+  WARNING: Negative pressures at 1:00:00 hrs.
+   
+  WARNING: Negative pressures at 2:00:00 hrs.
+   
+  WARNING: Negative pressures at 3:00:00 hrs.
+   
+  WARNING: Negative pressures at 4:00:00 hrs.
+   
+  WARNING: Negative pressures at 5:00:00 hrs.
+   
+  WARNING: Negative pressures at 6:00:00 hrs.
+   
+  WARNING: Negative pressures at 7:00:00 hrs.
+   
+  WARNING: Negative pressures at 8:00:00 hrs.
+   
+  WARNING: Negative pressures at 9:00:00 hrs.
+   
+  WARNING: Negative pressures at 10:00:00 hrs.
+   
+  WARNING: Negative pressures at 11:00:00 hrs.
+   
+  WARNING: Negative pressures at 12:00:00 hrs.
+   
+  WARNING: Negative pressures at 13:00:00 hrs.
+   
+  WARNING: Negative pressures at 14:00:00 hrs.
+   
+  WARNING: Negative pressures at 15:00:00 hrs.
+   
+  WARNING: Negative pressures at 16:00:00 hrs.
+   
+  WARNING: Negative pressures at 17:00:00 hrs.
+   
+  WARNING: Negative pressures at 18:00:00 hrs.
+   
+  WARNING: Negative pressures at 19:00:00 hrs.
+   
+  WARNING: Negative pressures at 20:00:00 hrs.
+   
+  WARNING: Negative pressures at 21:00:00 hrs.
+   
+  WARNING: Negative pressures at 22:00:00 hrs.
+   
+  WARNING: Negative pressures at 23:00:00 hrs.
+   
+  WARNING: Negative pressures at 24:00:00 hrs.
+   
+  Analysis ended Fri Jun 13 15:11:22 2025
