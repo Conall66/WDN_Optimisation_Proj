@@ -17,30 +17,9 @@ from torch_geometric.data import Data
 
 import gymnasium as gym
 from gymnasium import spaces
-from gymnasium.spaces.graph import GraphInstance
+from gymnasium.spaces.graph import GraphInstance # Add this import
 
 from Hydraulic import run_epanet_sim
-
-class ObjectSpace(spaces.Space):
-    """
-    A custom Gymnasium space for holding arbitrary Python objects.
-    This is necessary because the default `DummyVecEnv` in Stable-Baselines3
-    cannot handle variable-sized spaces like `spaces.Graph` directly.
-    By defining a space that can hold objects, we allow the VecEnv to create
-    a buffer of objects, bypassing the shape-checking errors.
-    """
-    def __init__(self):
-        super().__init__(shape=(), dtype=object)
-
-    def sample(self):
-        # Sampling is not well-defined for arbitrary objects.
-        # This is not used by the PPO agent during training.
-        raise NotImplementedError("Sampling not supported for this space")
-
-    def contains(self, x) -> bool:
-        # We can check if x is a GraphInstance, but for simplicity,
-        # we'll just accept any object.
-        return True
 
 class PPOEnv(gym.Env):
     """
@@ -93,10 +72,17 @@ class PPOEnv(gym.Env):
         self.results = None
 
         self.action_space = spaces.Discrete(len(self.pipes) + 1)
+        self.actions_for_current_network = []
 
         self.observation_space = spaces.Dict({
-            "graph": ObjectSpace(),
-            "global_state": spaces.Box(low=-np.inf, high=np.inf, shape=(3,), dtype=np.float32),
+            # The 'graph' key holds a Graph space.
+            # This space defines the features per node and per edge, but not their count.
+            "graph": spaces.Graph(
+                node_space=spaces.Box(low=-np.inf, high=np.inf, shape=(2,), dtype=np.float32), # Shape of a single node's features
+                edge_space=spaces.Box(low=-np.inf, high=np.inf, shape=(3,), dtype=np.float32)  # Shape of a single edge's features
+            ),
+            # The other state information remains in standard Box spaces
+            "global_state": spaces.Box(low=-np.inf, high=np.inf, shape=(4,), dtype=np.float32), # 4 Features include the budget, total cost, network index, and progress in the current network
             "current_pipe_nodes": spaces.Box(low=0, high=np.inf, shape=(2,), dtype=np.int64)
         })
 
@@ -122,7 +108,8 @@ class PPOEnv(gym.Env):
         # --- Create and normalise Edge Features ---
         start_nodes, end_nodes = [], []
         raw_edge_features = []
-        current_pipe_name = self.wn.pipe_name_list[self.current_pipe_index]
+        pipe_idx_for_obs = min(self.current_pipe_index, len(self.wn.pipe_name_list) - 1) # Clamps pipe index
+        current_pipe_name = self.wn.pipe_name_list[pipe_idx_for_obs]
         for pipe_name, pipe in self.wn.pipes():
             start_nodes.extend([node_map[pipe.start_node_name], node_map[pipe.end_node_name]])
             end_nodes.extend([node_map[pipe.end_node_name], node_map[pipe.start_node_name]])
@@ -138,9 +125,20 @@ class PPOEnv(gym.Env):
         # Avoid division by zero if there's only one network
         total_networks = len(self.network_files)
         norm_network_index = self.current_step_index / (total_networks - 1) if total_networks > 1 else 0
-        global_state = np.array([norm_budget, norm_total_cost, norm_network_index], dtype=np.float32)
-        global_state = np.clip(global_state, 0, 1)
+        
+        num_pipes_in_network = len(self.wn.pipe_name_list)
+        # Progress is a value from 0.0 to 1.0 indicating how many pipes have been decided on.
+        # Handle the case where a network might have only one pipe.
+        progress_in_network = self.current_pipe_index / (num_pipes_in_network - 1) if num_pipes_in_network > 1 else 1.0
 
+        global_state = np.array([
+            norm_budget, 
+            norm_total_cost, 
+            norm_network_index,
+            progress_in_network  # Add the new feature here
+        ], dtype=np.float32)
+        global_state = np.clip(global_state, 0, 1)
+        
         # --- Get Current Pipe Node Indices ---
         pipe_obj = self.wn.get_link(current_pipe_name)
         start_node_idx = node_map[pipe_obj.start_node_name]
@@ -161,41 +159,68 @@ class PPOEnv(gym.Env):
         }
         return observation
 
+    # def _calculate_reward(self, weights=None):
+    #     """
+    #     Calculates a reward score between 0 and 1.
+        
+    #     This function balances hydraulic performance, energy consumption, and
+    #     budget utilization, with each component being normalised to a [0,1] score.
+    #     """
+    #     # --- 1. Pressure Score (0 to 1, where 1 is best) ---
+    #     pressures = self.results.node['pressure'].iloc[-1]
+    #     pressure_deficit = np.sum(np.maximum(0, self.min_pressure_m - pressures.loc[self.wn.junction_name_list]))
+        
+    #     # Define a worst-case scenario for normalisation
+    #     max_possible_deficit = self.min_pressure_m * len(self.wn.junction_name_list)
+    #     # print(f"Maximum possible pressure deficit: {max_possible_deficit:.2f} m")
+
+    #     pressure_score = max(0, 1 - (pressure_deficit / max_possible_deficit)) if max_possible_deficit > 0 else 1.0
+
+    #     # Cost reward is normalised to [0,1] scale, with 1 bein gno mony spent, and 0 being the budget exhausted
+
+    #     normalised_cost = self.total_cost / self.initial_budget
+    #     cost_score = max(0, 1 - normalised_cost) if self.initial_budget > 0 else 1.0
+
+    #     # --- 4. Final Weighted Combination ---
+    #     # Define the importance of each component
+    #     if weights == None:
+    #         weights = {
+    #             'pressure deficit': 0.4,
+    #             'cost': 0.6,
+    #             # 'energy': 0.2
+    #         }
+
+    #     weighted_pressure = weights['pressure deficit'] * pressure_score
+    #     weighted_cost = weights['cost'] * cost_score
+        
+    #     total_reward = weighted_pressure + weighted_cost
+
+    #     return total_reward, weighted_pressure, weighted_cost, pressure_deficit
+
     def _calculate_reward(self, weights=None):
         """
-        Calculates a reward score between 0 and 1.
-        
-        This function balances hydraulic performance, energy consumption, and
-        budget utilization, with each component being normalised to a [0,1] score.
+        Calculates a reward score based ONLY on minimizing cost.
+        The agent is rewarded for spending as little as possible. The highest
+        reward is achieved when the total cost is zero.
         """
-        # --- 1. Pressure Score (0 to 1, where 1 is best) ---
-        pressures = self.results.node['pressure'].iloc[-1]
-        pressure_deficit = np.sum(np.maximum(0, self.min_pressure_m - pressures.loc[self.wn.junction_name_list]))
-        
-        # Define a worst-case scenario for normalisation
-        max_possible_deficit = self.min_pressure_m * len(self.wn.junction_name_list)
-        # print(f"Maximum possible pressure deficit: {max_possible_deficit:.2f} m")
-
-        pressure_score = max(0, 1 - (pressure_deficit / max_possible_deficit)) if max_possible_deficit > 0 else 1.0
-
-        # Cost reward is normalised to [0,1] scale, with 1 bein gno mony spent, and 0 being the budget exhausted
-
+        # --- 1. Cost Score Calculation ---
+        # The cost score is normalized. A score of 1 means no money was spent.
+        # The score decreases as cost increases, becoming negative if the initial budget is exceeded.
         normalised_cost = self.total_cost / self.initial_budget
-        cost_score = max(0, 1 - normalised_cost) if self.initial_budget > 0 else 1.0
+        cost_score = 1 - normalised_cost
 
-        # --- 4. Final Weighted Combination ---
-        # Define the importance of each component
-        if weights == None:
-            weights = {
-                'pressure deficit': 0.4,
-                'cost': 0.6,
-                # 'energy': 0.2
-            }
+        # --- 2. Set Total Reward ---
+        # The total reward is now exclusively based on the cost score.
+        # Maximizing this reward is equivalent to minimizing total_cost.
+        total_reward = cost_score
 
-        weighted_pressure = weights['pressure deficit'] * pressure_score
-        weighted_cost = weights['cost'] * cost_score
-        
-        total_reward = weighted_pressure + weighted_cost
+        # --- 3. Return Metrics for Logging ---
+        # To maintain the existing function signature expected by the step function,
+        # we return 0 for the unused pressure metrics. The weighted_cost can
+        # simply be the total_reward itself.
+        pressure_deficit = 0.0  # Ignored
+        weighted_pressure = 0.0 # Ignored
+        weighted_cost = total_reward 
 
         return total_reward, weighted_pressure, weighted_cost, pressure_deficit
     
@@ -215,6 +240,7 @@ class PPOEnv(gym.Env):
         self.current_step_index = 0
         self.current_pipe_index = 0
         self.total_cost = 0.0
+        self.actions_for_current_network = []
         
         # Load the first network file
         initial_inp_file = os.path.join(self.network_files_dir, self.network_files[0])
@@ -231,95 +257,170 @@ class PPOEnv(gym.Env):
     
     def step(self, action):
         """Executes one agent-environment interaction step."""
+        
+        # Store the action for the current pipe
+        self.actions_for_current_network.append(action)
 
+        # Apply the cost of the action immediately
         self.step_cost = 0.0
         pipe_to_modify_name = self.wn.pipe_name_list[self.current_pipe_index]
         pipe_obj = self.wn.get_link(pipe_to_modify_name)
-        
-        # Apply the action
-        if action == 0:
-            # No change to the pipe diameter
-            pass
-        else:
-            # Map the action to a new diameter
-            new_diameter = list(self.pipes.values())[action - 1]['diameter']
-            old_diameter = pipe_obj.diameter
-                
-            # Change cost calculation
-            change_cost = (self.pipes[list(self.pipes.keys())[action - 1]]['unit_cost'] * pipe_obj.length + self.labour_cost * pipe_obj.length)
 
-            # Remove step cost from budget
+        # --- START: Hard Constraint Integration ---
+
+        # An action > 0 corresponds to selecting a new pipe diameter
+        if action > 0:
+            # The first pipe option is at index 1 in the action space
+            pipe_key = list(self.pipes.keys())[action - 1]
+            change_cost = (self.pipes[pipe_key]['unit_cost'] * pipe_obj.length + self.labour_cost * pipe_obj.length)
+            
+            # 1. CHECK: Before applying cost, check if the action is affordable.
+            if self.budget < change_cost:
+                # 2. PENALISE & TERMINATE: If not affordable, end the episode with a large penalty.
+                terminated = True
+                truncated = False
+                # This large negative reward teaches the agent that this is a critical failure state.
+                reward = -10.0  
+                
+                # Get the current observation to return with the failure state.
+                observation = self._get_observation()
+                info = {
+                    'total_cost': self.total_cost,
+                    'step_cost': 0, # No cost was incurred
+                    'network_completed': False,
+                    'reward': reward,
+                    'termination_reason': 'Budget exceeded'
+                }
+                # 3. RETURN EARLY: Immediately exit the function.
+                return observation, reward, terminated, truncated, info
+            
+            # 4. PROCEED: If the action was affordable, apply the cost as normal.
             self.budget -= change_cost
             self.step_cost += change_cost
             self.total_cost += change_cost
-            pipe_obj.diameter = new_diameter
         
-        # --- Transition to the next state ---
-        self.current_pipe_index += 1
-        terminated = False
-        reward = 0  # Default reward is 0 for intermediate steps
+        # --- END: Hard Constraint Integration ---
 
-        # Check if we've finished the current network
-        network_completed = self.current_pipe_index >= len(self.wn.pipe_name_list)
+        # Move to the next pipe
+        self.current_pipe_index += 1
         
-        # If we've considered all pipes in the current network...
+        terminated = False
+        truncated = False
+        reward = 0.0  # Default reward for intermediate steps is 0
+        network_completed = self.current_pipe_index >= len(self.wn.pipe_name_list)
+
+        info = {
+            'total_cost': self.total_cost,
+            'step_cost': self.step_cost,
+            'network_completed': network_completed,
+            'reward': reward
+        }
+        
+        # --- LOGIC TRIGGERED ONLY AT THE END OF A NETWORK ---
         if network_completed:
-            self.current_step_index += 1
+            # 1. Apply all collected actions to the current network model
+            for i, collected_action in enumerate(self.actions_for_current_network):
+                if collected_action > 0:
+                    pipe_name = self.wn.pipe_name_list[i]
+                    pipe = self.wn.get_link(pipe_name)
+                    pipe.diameter = list(self.pipes.values())[collected_action - 1]['diameter']
             
-            # Run simulation to calculate reward for the completed network
+            # 2. Run the hydraulic simulation ONCE with the modified network
             try:
-                results = run_epanet_sim(self.wn)
-                self.results = results
-                # Calculate reward only after completing all pipes in a network
+                self.results = run_epanet_sim(self.wn)
+                # 3. Calculate the true reward based on the outcome
                 reward, weighted_pressure, weighted_cost, pressure_deficit = self._calculate_reward()
+                info.update({
+                    'weighted_pressure': weighted_pressure,
+                    'weighted_cost': weighted_cost,
+                    'pressure_deficit': pressure_deficit,
+                    'reward': reward
+                })
             except Exception as e:
                 print(f"Simulation failed at network completion: {e}")
-                reward = -1  # Penalty for simulation failure
+                reward = -1  # Penalize for failed simulation
                 terminated = True
-                
-            # ...check if there are more network files to load.
+
+            # 4. Prepare for the next network or end the episode
+            self.current_step_index += 1
             if self.current_step_index >= len(self.network_files):
-                terminated = True  # End of the episode
+                terminated = True  # All networks processed, episode ends
             else:
-                # Increase the budget
+                # Load the next network and carry over modified pipe diameters
                 self.budget += self.budget_step
-                # Load the next network, carrying over modified diameters
                 next_inp_file = os.path.join(self.network_files_dir, self.network_files[self.current_step_index])
                 next_wn = WaterNetworkModel(next_inp_file)
                 for pipe_name, pipe in self.wn.pipes():
                     if pipe_name in next_wn.pipe_name_list:
                         next_wn.get_link(pipe_name).diameter = pipe.diameter
                 self.wn = next_wn
-                self.current_pipe_index = 0  # Reset pipe index for new network
-        else:
-            # For intermediate steps, just run simulation to update the state
-            try:
-                results = run_epanet_sim(self.wn)
-                self.results = results
-                # No reward calculation for intermediate steps
-            except Exception as e:
-                print(f"Simulation failed at step {self.current_step_index}, pipe {self.current_pipe_index}: {e}")
-                reward = -1  # Penalty for simulation failure
-                terminated = True
+                
+                # Reset pipe index and action list for the new network
+                self.current_pipe_index = 0
+                self.actions_for_current_network = []
+                
+                # Run a simulation for the new, unmodified network to get its initial state for the observation
+                try:
+                    self.results = run_epanet_sim(self.wn)
+                except Exception as e:
+                    print(f"Simulation failed on loading new network: {e}")
+                    reward = -1
+                    terminated = True
 
+        # Always get a fresh observation for the next state
         observation = self._get_observation()
-        info = {
-            'total_cost': self.total_cost, 
-            'step_cost': self.step_cost,
-            'weighted_pressure': weighted_pressure if 'weighted_pressure' in locals() else 0,
-            'weighted_cost': weighted_cost if 'weighted_cost' in locals() else 0,
-            'pressure_deficit': pressure_deficit if 'pressure_deficit' in locals() else 0,
-            'network_completed': network_completed,  # Flag to indicate if a network was completed
-            'reward': reward  # Include reward in info for clarity
-        }
-        truncated = False  # Not using time limits
 
         return observation, reward, terminated, truncated, info
+    
+def display_network_pipe_info(network_files_dir='Networks/Simple_Nets'):
+    """
+    Displays the number of pipes and maximum pipe index for each network in the directory.
+    
+    Parameters:
+    network_files_dir (str): Directory containing the network .inp files
+    """
+    # Get and sort the network files
+    network_files = sorted(
+        [f for f in os.listdir(network_files_dir) if f.endswith('.inp')],
+        key=lambda x: int(x.split('_')[-1].split('.')[0])
+    )
+    
+    print("\n=== Network Pipe Information ===")
+    print(f"{'Network File':<25} {'Pipe Count':<15} {'Max Pipe Index':<15}")
+    print("-" * 55)
+    
+    for i, file in enumerate(network_files):
+        # Load the network
+        file_path = os.path.join(network_files_dir, file)
+        wn = WaterNetworkModel(file_path)
+        
+        # Get pipe information
+        pipe_count = len(wn.pipe_name_list)
+        max_pipe_index = pipe_count - 1  # Zero-based indexing
+        
+        print(f"{file:<25} {pipe_count:<15} {max_pipe_index:<15}")
+        
+    print("=" * 55)
+    print("Note: Pipe indices are zero-based (0 to pipe_count-1)")
+    print("The current_pipe_index should never exceed the max pipe index for any network.\n")
 
-if __name__ == '__main__':
-
+def main():
     test_dir = 'Networks/Simple_Nets'
     env = PPOEnv(network_files_dir=test_dir)
+
+    # Calculate total number of steps (pipes) across all networks
+    network_files = sorted(
+        [f for f in os.listdir(test_dir) if f.endswith('.inp')],
+        key=lambda x: int(x.split('_')[-1].split('.')[0])
+    )
+    
+    total_pipes = 0
+    for file in network_files:
+        file_path = os.path.join(test_dir, file)
+        wn = WaterNetworkModel(file_path)
+        total_pipes += len(wn.pipe_name_list)
+    
+    print(f"Total pipes across all networks: {total_pipes}")
     
     initial_budget = 500000  # Store the initial budget separately
     obs, info = env.reset(budget=initial_budget)
@@ -332,8 +433,12 @@ if __name__ == '__main__':
     current_network_index = env.current_step_index
     network_actions = []
     
-    for i in range(15):
+    for i in range(total_pipes): # Indexing difference
         # Store the current pipe's original diameter before action
+
+        print(f"\n--- Step {i+1} ---")
+        print(f"Pipe Index: {env.current_pipe_index}")
+
         pipe_to_modify = env.wn.pipe_name_list[env.current_pipe_index]
         original_diameter = env.wn.get_link(pipe_to_modify).diameter
         
@@ -379,6 +484,7 @@ if __name__ == '__main__':
             # The budget_step has already been added in the step method,
             # so we're just displaying the values here
             print(f"Budget before bonus: £{budget_before_bonus:,.2f}")
+            print(f"Budget bonus added: £{env.budget_step:,.2f}")
             print(f"New budget: £{env.budget:,.2f}")  # This will now show the updated value
             print(f"Total cost so far: £{info['total_cost']:,.2f} ({info['total_cost']/initial_budget*100:.1f}% of initial budget)")
             print("=" * 80 + "\n")
@@ -400,4 +506,10 @@ if __name__ == '__main__':
             
     env.close()
 
-    
+if __name__ == '__main__':
+
+    main()
+
+    # Display pipe information for all networks
+    # test_dir = 'Networks/Simple_Nets'
+    # display_network_pipe_info(test_dir)

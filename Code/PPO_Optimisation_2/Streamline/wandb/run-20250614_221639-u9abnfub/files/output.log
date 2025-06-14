@@ -1,0 +1,70 @@
+Step: 0
+global_step=2, episodic_return=-10.0
+Exception in thread Thread-9:
+Traceback (most recent call last):
+  File [35m"C:\Users\conal\AppData\Local\Programs\Python\Python313\Lib\threading.py"[0m, line [35m1041[0m, in [35m_bootstrap_inner[0m
+    [31mself.run[0m[1;31m()[0m
+    [31m~~~~~~~~[0m[1;31m^^[0m
+  File [35m"C:\Users\conal\AppData\Local\Programs\Python\Python313\Lib\site-packages\tensorboard\summary\writer\event_file_writer.py"[0m, line [35m244[0m, in [35mrun[0m
+    [31mself._run[0m[1;31m()[0m
+    [31m~~~~~~~~~[0m[1;31m^^[0m
+  File [35m"C:\Users\conal\AppData\Local\Programs\Python\Python313\Lib\site-packages\tensorboard\summary\writer\event_file_writer.py"[0m, line [35m275[0m, in [35m_run[0m
+    [31mself._record_writer.write[0m[1;31m(data)[0m
+    [31m~~~~~~~~~~~~~~~~~~~~~~~~~[0m[1;31m^^^^^^[0m
+  File [35m"C:\Users\conal\AppData\Local\Programs\Python\Python313\Lib\site-packages\tensorboard\summary\writer\record_writer.py"[0m, line [35m40[0m, in [35mwrite[0m
+    [31mself._writer.write[0m[1;31m(header + header_crc + data + footer_crc)[0m
+    [31m~~~~~~~~~~~~~~~~~~[0m[1;31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  File [35m"C:\Users\conal\AppData\Local\Programs\Python\Python313\Lib\site-packages\tensorboard\compat\tensorflow_stub\io\gfile.py"[0m, line [35m775[0m, in [35mwrite[0m
+    [31mself.fs.append[0m[1;31m(self.filename, file_content, self.binary_mode)[0m
+    [31m~~~~~~~~~~~~~~[0m[1;31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  File [35m"C:\Users\conal\AppData\Local\Programs\Python\Python313\Lib\site-packages\tensorboard\compat\tensorflow_stub\io\gfile.py"[0m, line [35m167[0m, in [35mappend[0m
+    [31mself._write[0m[1;31m(filename, file_content, "ab" if binary_mode else "a")[0m
+    [31m~~~~~~~~~~~[0m[1;31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  File [35m"C:\Users\conal\AppData\Local\Programs\Python\Python313\Lib\site-packages\tensorboard\compat\tensorflow_stub\io\gfile.py"[0m, line [35m171[0m, in [35m_write[0m
+    with [31mio.open[0m[1;31m(filename, mode, encoding=encoding)[0m as f:
+         [31m~~~~~~~[0m[1;31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[1;35mFileNotFoundError[0m: [35m[Errno 2] No such file or directory: b'runs/PPOEnv__Actor_Critic_CleanRL__1__1749935799\\events.out.tfevents.1749935800.Conalls_Laptop.9996.0'[0m
+global_step=5, episodic_return=-10.0
+Traceback (most recent call last):
+  File "c:\Users\conal\OneDrive - Imperial College London\Imperial\Masters Project\Git_Sync\WDN_Optimisation_Proj\Code\PPO_Optimisation_2\Streamline\Actor_Critic_CleanRL.py", line 370, in <module>
+    writer.add_scalar("charts/episodic_return", info["episode"]["r"], current_step)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\conal\AppData\Local\Programs\Python\Python313\Lib\site-packages\torch\utils\tensorboard\writer.py", line 381, in add_scalar
+    self._get_file_writer().add_summary(summary, global_step, walltime)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\conal\AppData\Local\Programs\Python\Python313\Lib\site-packages\torch\utils\tensorboard\writer.py", line 115, in add_summary
+    self.add_event(event, global_step, walltime)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\conal\AppData\Local\Programs\Python\Python313\Lib\site-packages\torch\utils\tensorboard\writer.py", line 99, in add_event
+    self.event_writer.add_event(event)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^
+  File "C:\Users\conal\AppData\Local\Programs\Python\Python313\Lib\site-packages\tensorboard\summary\writer\event_file_writer.py", line 117, in add_event
+    self._async_writer.write(event.SerializeToString())
+    ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\conal\AppData\Local\Programs\Python\Python313\Lib\site-packages\tensorboard\summary\writer\event_file_writer.py", line 171, in write
+    self._check_worker_status()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\conal\AppData\Local\Programs\Python\Python313\Lib\site-packages\tensorboard\summary\writer\event_file_writer.py", line 212, in _check_worker_status
+    raise exception
+  File "C:\Users\conal\AppData\Local\Programs\Python\Python313\Lib\threading.py", line 1041, in _bootstrap_inner
+    self.run()
+    ~~~~~~~~^^
+  File "C:\Users\conal\AppData\Local\Programs\Python\Python313\Lib\site-packages\tensorboard\summary\writer\event_file_writer.py", line 244, in run
+    self._run()
+    ~~~~~~~~~^^
+  File "C:\Users\conal\AppData\Local\Programs\Python\Python313\Lib\site-packages\tensorboard\summary\writer\event_file_writer.py", line 275, in _run
+    self._record_writer.write(data)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\conal\AppData\Local\Programs\Python\Python313\Lib\site-packages\tensorboard\summary\writer\record_writer.py", line 40, in write
+    self._writer.write(header + header_crc + data + footer_crc)
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\conal\AppData\Local\Programs\Python\Python313\Lib\site-packages\tensorboard\compat\tensorflow_stub\io\gfile.py", line 775, in write
+    self.fs.append(self.filename, file_content, self.binary_mode)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\conal\AppData\Local\Programs\Python\Python313\Lib\site-packages\tensorboard\compat\tensorflow_stub\io\gfile.py", line 167, in append
+    self._write(filename, file_content, "ab" if binary_mode else "a")
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\conal\AppData\Local\Programs\Python\Python313\Lib\site-packages\tensorboard\compat\tensorflow_stub\io\gfile.py", line 171, in _write
+    with io.open(filename, mode, encoding=encoding) as f:
+         ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: b'runs/PPOEnv__Actor_Critic_CleanRL__1__1749935799\\events.out.tfevents.1749935800.Conalls_Laptop.9996.0'
