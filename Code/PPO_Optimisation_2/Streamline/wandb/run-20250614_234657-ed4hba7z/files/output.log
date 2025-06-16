@@ -1,0 +1,25 @@
+global_step=430, episodic_return=-145.54470525251799
+Update complete after global step 0
+global_step=861, episodic_return=-117.18468025973664
+Update complete after global step 431
+global_step=1292, episodic_return=-97.74560366521781
+Update complete after global step 862
+global_step=1723, episodic_return=-81.19132031745565
+Update complete after global step 1293
+global_step=2154, episodic_return=-52.22074862914294
+Update complete after global step 1724
+global_step=2585, episodic_return=-30.78722378066014
+Update complete after global step 2155
+global_step=3016, episodic_return=-11.082368455982479
+Update complete after global step 2586
+global_step=3447, episodic_return=15.589337835501274
+Update complete after global step 3017
+global_step=3878, episodic_return=37.05080222222256
+Update complete after global step 3448
+global_step=4309, episodic_return=49.3336200000006
+Update complete after global step 3879
+global_step=4740, episodic_return=49.85878666666727
+Update complete after global step 4310
+global_step=5171, episodic_return=50.6157288888895
+Update complete after global step 4741
+Agent model saved to runs/PPOEnv__Actor_Critic_CleanRL__1__1749941217/agent_20250614_235137.pt and runs/PPOEnv__Actor_Critic_CleanRL__1__1749941217/agent.pt

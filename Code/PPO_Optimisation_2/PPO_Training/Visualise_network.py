@@ -11,6 +11,7 @@ import networkx as nx
 from matplotlib.colors import Normalize
 from matplotlib.cm import ScalarMappable
 import wntr
+from wntr.graphics.network import plot_network as plot_network_wntr
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.lines import Line2D
 from natsort import natsorted
@@ -961,7 +962,8 @@ def plot_pipe_diameters_heatmap_over_time(
     
     return plt.gcf() # Return the figure object
 
-if __name__ == "__main__":
+def vis_hanoi_anytown():
+
     script_dir = os.path.dirname(__file__) #
     
     # Define paths to the INP files
@@ -1038,4 +1040,25 @@ if __name__ == "__main__":
                       save_path=os.path.join(script, 'Plots', 'Hanoi_net_pressure_deficit.png'), mode='2d', show=True)
     visualise_network(wn_anytown, results_anytown, "Anytown Network with Pressure Deficit",
                       save_path=os.path.join(script, 'Plots', 'Anytown_net_pressure_deficit.png'), mode='2d', show=True)
+
+if __name__ == "__main__":
+
+    # Visualise the wolf network
+
+    script = os.path.dirname(os.path.abspath(__file__)) #
+    wolf_inp_path = os.path.join(script, 'Initial_networks', 'wolf-3.inp') #
+    hanoi_inp_path = os.path.join(script, 'Modified_nets', 'hanoi-3.inp') #
+
+    wn_wolf = wntr.network.WaterNetworkModel(wolf_inp_path) #
+    results_wolf = run_epanet_simulation(wn_wolf) #
+    save_wolf = os.path.join(script, 'Plots', 'Wolf_net_3d.png')
+
+    wn_hanoi = wntr.network.WaterNetworkModel(hanoi_inp_path) #
+    results_hanoi = run_epanet_simulation(wn_hanoi) #
+    save_hanoi = os.path.join(script, 'Plots', 'Hanoi_net_3d.png')
+    
+    # Plot using native graphing function
+    plot_network_wntr(wn_hanoi, show_plot = True)
+    plt.show()
+
 

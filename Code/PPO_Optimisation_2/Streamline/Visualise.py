@@ -29,11 +29,25 @@ def setup_environment(network_dir='Networks/Simple_Nets'):
 
 def load_agent(model_path, env, device):
     """Loads a trained GNNPolicy agent from a file."""
+    # Check if path is a directory
+    if os.path.isdir(model_path):
+        # If a directory is provided, load the most recent timestamped model
+        model_files = glob.glob(os.path.join(model_path, "agent_*.pt"))
+        if model_files:
+            # Sort by modification time (newest first)
+            model_files.sort(key=os.path.getmtime, reverse=True)
+            model_path = model_files[0]
+            print(f"Loading most recent model: {os.path.basename(model_path)}")
+        else:
+            # Fall back to default model file
+            model_path = os.path.join(model_path, "agent.pt")
+    
     if not os.path.exists(model_path):
         raise FileNotFoundError(
             f"Model file not found at '{model_path}'. "
             "Please ensure the MODEL_PATH variable is set correctly."
         )
+    
     agent = GNNPolicy(env.observation_space, env.action_space).to(device)
     agent.load_state_dict(torch.load(model_path, map_location=device))
     agent.eval()  # Set the agent to evaluation mode for inference
@@ -360,8 +374,8 @@ def plot_training_metrics(log_dir, save_path=None, figsize=(18, 10)):
 
 if __name__ == '__main__':
 
-    MODEL_PATH = "ppo_gnn_wntr_model.zip"  # Update this path to your model file
-    WANDB_RUN_PATH = "wandb/run-20250613_164047-vmqi0ynt/run-vmqi0ynt.wandb"  # Update this to your wandb run path
+    MODEL_PATH = "runs/PPOEnv__Actor_Critic_CleanRL__1__1749941217/agent_20250614_235137.pt"  # Update this path to your model file
+    WANDB_RUN_PATH = "wandb/run-20250614_234657-ed4hba7z/run-ed4hba7z.wandb"  # Update this to your wandb run path
 
     # Verify that placeholder paths have been updated
     if "your_entity" in WANDB_RUN_PATH or "path/to/your" in MODEL_PATH:

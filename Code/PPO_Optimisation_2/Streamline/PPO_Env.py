@@ -255,98 +255,200 @@ class PPOEnv(gym.Env):
 
         return self._get_observation(), {"total_cost": self.total_cost} # Total cost is updated in each step, so we return it here for the first observation
     
-    def step(self, action):
-        """Executes one agent-environment interaction step."""
+    # def step(self, action):
+    #     """Executes one agent-environment interaction step."""
         
-        # Store the action for the current pipe
-        self.actions_for_current_network.append(action)
+    #     # Store the action for the current pipe
+    #     self.actions_for_current_network.append(action)
 
-        # Apply the cost of the action immediately
+    #     # Apply the cost of the action immediately
+    #     self.step_cost = 0.0
+    #     pipe_to_modify_name = self.wn.pipe_name_list[self.current_pipe_index]
+    #     pipe_obj = self.wn.get_link(pipe_to_modify_name)
+
+    #     # --- START: Hard Constraint Integration ---
+
+    #     # An action > 0 corresponds to selecting a new pipe diameter
+    #     if action > 0:
+    #         # The first pipe option is at index 1 in the action space
+    #         pipe_key = list(self.pipes.keys())[action - 1]
+    #         change_cost = (self.pipes[pipe_key]['unit_cost'] * pipe_obj.length + self.labour_cost * pipe_obj.length)
+            
+    #         # 1. CHECK: Before applying cost, check if the action is affordable.
+    #         if self.budget < change_cost:
+    #             # 2. PENALISE & TERMINATE: If not affordable, end the episode with a large penalty.
+    #             terminated = True
+    #             truncated = False
+    #             # This large negative reward teaches the agent that this is a critical failure state.
+    #             reward = -10.0  
+                
+    #             # Get the current observation to return with the failure state.
+    #             observation = self._get_observation()
+    #             info = {
+    #                 'total_cost': self.total_cost,
+    #                 'step_cost': 0, # No cost was incurred
+    #                 'network_completed': False,
+    #                 'reward': reward,
+    #                 'termination_reason': 'Budget exceeded'
+    #             }
+    #             # 3. RETURN EARLY: Immediately exit the function.
+    #             return observation, reward, terminated, truncated, info
+            
+    #         # 4. PROCEED: If the action was affordable, apply the cost as normal.
+    #         self.budget -= change_cost
+    #         self.step_cost += change_cost
+    #         self.total_cost += change_cost
+        
+    #     # --- END: Hard Constraint Integration ---
+
+    #     # Move to the next pipe
+    #     self.current_pipe_index += 1
+        
+    #     terminated = False
+    #     truncated = False
+    #     reward = 0.0  # Default reward for intermediate steps is 0
+    #     network_completed = self.current_pipe_index >= len(self.wn.pipe_name_list)
+
+    #     info = {
+    #         'total_cost': self.total_cost,
+    #         'step_cost': self.step_cost,
+    #         'network_completed': network_completed,
+    #         'reward': reward
+    #     }
+        
+    #     # --- LOGIC TRIGGERED ONLY AT THE END OF A NETWORK ---
+    #     if network_completed:
+    #         # 1. Apply all collected actions to the current network model
+    #         for i, collected_action in enumerate(self.actions_for_current_network):
+    #             if collected_action > 0:
+    #                 pipe_name = self.wn.pipe_name_list[i]
+    #                 pipe = self.wn.get_link(pipe_name)
+    #                 pipe.diameter = list(self.pipes.values())[collected_action - 1]['diameter']
+            
+    #         # 2. Run the hydraulic simulation ONCE with the modified network
+    #         try:
+    #             self.results = run_epanet_sim(self.wn)
+    #             # 3. Calculate the true reward based on the outcome
+    #             reward, weighted_pressure, weighted_cost, pressure_deficit = self._calculate_reward()
+    #             info.update({
+    #                 'weighted_pressure': weighted_pressure,
+    #                 'weighted_cost': weighted_cost,
+    #                 'pressure_deficit': pressure_deficit,
+    #                 'reward': reward
+    #             })
+    #         except Exception as e:
+    #             print(f"Simulation failed at network completion: {e}")
+    #             reward = -1  # Penalize for failed simulation
+    #             terminated = True
+
+    #         # 4. Prepare for the next network or end the episode
+    #         self.current_step_index += 1
+    #         if self.current_step_index >= len(self.network_files):
+    #             terminated = True  # All networks processed, episode ends
+    #         else:
+    #             # Load the next network and carry over modified pipe diameters
+    #             self.budget += self.budget_step
+    #             next_inp_file = os.path.join(self.network_files_dir, self.network_files[self.current_step_index])
+    #             next_wn = WaterNetworkModel(next_inp_file)
+    #             for pipe_name, pipe in self.wn.pipes():
+    #                 if pipe_name in next_wn.pipe_name_list:
+    #                     next_wn.get_link(pipe_name).diameter = pipe.diameter
+    #             self.wn = next_wn
+                
+    #             # Reset pipe index and action list for the new network
+    #             self.current_pipe_index = 0
+    #             self.actions_for_current_network = []
+                
+    #             # Run a simulation for the new, unmodified network to get its initial state for the observation
+    #             try:
+    #                 self.results = run_epanet_sim(self.wn)
+    #             except Exception as e:
+    #                 print(f"Simulation failed on loading new network: {e}")
+    #                 reward = -1
+    #                 terminated = True
+
+    #     # Always get a fresh observation for the next state
+    #     observation = self._get_observation()
+
+    #     return observation, reward, terminated, truncated, info
+
+    # In PPO_Env.py
+
+    def step(self, action):
+        """
+        Executes one agent-environment interaction step with a DENSE reward signal.
+        The agent is rewarded or punished immediately after each action.
+        """
+    
+        # The reward is calculated based on the cost of the action in this single step.
+        
+        # 1. Determine the cost of the current action.
         self.step_cost = 0.0
+        change_cost = 0.0
         pipe_to_modify_name = self.wn.pipe_name_list[self.current_pipe_index]
         pipe_obj = self.wn.get_link(pipe_to_modify_name)
 
-        # --- START: Hard Constraint Integration ---
-
-        # An action > 0 corresponds to selecting a new pipe diameter
         if action > 0:
-            # The first pipe option is at index 1 in the action space
             pipe_key = list(self.pipes.keys())[action - 1]
             change_cost = (self.pipes[pipe_key]['unit_cost'] * pipe_obj.length + self.labour_cost * pipe_obj.length)
-            
-            # 1. CHECK: Before applying cost, check if the action is affordable.
-            if self.budget < change_cost:
-                # 2. PENALISE & TERMINATE: If not affordable, end the episode with a large penalty.
-                terminated = True
-                truncated = False
-                # This large negative reward teaches the agent that this is a critical failure state.
-                reward = -10.0  
-                
-                # Get the current observation to return with the failure state.
-                observation = self._get_observation()
-                info = {
-                    'total_cost': self.total_cost,
-                    'step_cost': 0, # No cost was incurred
-                    'network_completed': False,
-                    'reward': reward,
-                    'termination_reason': 'Budget exceeded'
-                }
-                # 3. RETURN EARLY: Immediately exit the function.
-                return observation, reward, terminated, truncated, info
-            
-            # 4. PROCEED: If the action was affordable, apply the cost as normal.
-            self.budget -= change_cost
-            self.step_cost += change_cost
-            self.total_cost += change_cost
-        
-        # --- END: Hard Constraint Integration ---
+            self.step_cost = change_cost
+
+        # 2. Calculate the dense reward for this step.
+        if change_cost > 0:
+            # Negative reward (punishment) proportional to the fraction of the initial budget spent.
+            # This punishes any spending.
+            reward = -(change_cost / self.initial_budget)
+        else:
+            # A small, constant positive reward for taking the correct 'do nothing' action.
+            # We scale it by the number of pipes to keep the reward value stable across networks.
+            reward = 1.0 / len(self.wn.pipe_name_list)
+
+        # 3. Apply the cost to the budget and total cost.
+        self.budget -= change_cost
+        self.total_cost += change_cost
+
+        # Store the action for the current pipe
+        self.actions_for_current_network.append(action)
 
         # Move to the next pipe
         self.current_pipe_index += 1
         
         terminated = False
         truncated = False
-        reward = 0.0  # Default reward for intermediate steps is 0
         network_completed = self.current_pipe_index >= len(self.wn.pipe_name_list)
 
         info = {
             'total_cost': self.total_cost,
             'step_cost': self.step_cost,
             'network_completed': network_completed,
-            'reward': reward
+            'reward': reward,  # This is our new, dense reward
         }
         
         # --- LOGIC TRIGGERED ONLY AT THE END OF A NETWORK ---
         if network_completed:
-            # 1. Apply all collected actions to the current network model
+            # NOTE: The sparse reward from _calculate_reward is no longer used for training.
+            # The agent learns directly from the immediate reward at each step.
+            
+            # We still need to apply actions and run the simulation to get the
+            # correct observation for the next state.
             for i, collected_action in enumerate(self.actions_for_current_network):
                 if collected_action > 0:
                     pipe_name = self.wn.pipe_name_list[i]
                     pipe = self.wn.get_link(pipe_name)
                     pipe.diameter = list(self.pipes.values())[collected_action - 1]['diameter']
             
-            # 2. Run the hydraulic simulation ONCE with the modified network
             try:
                 self.results = run_epanet_sim(self.wn)
-                # 3. Calculate the true reward based on the outcome
-                reward, weighted_pressure, weighted_cost, pressure_deficit = self._calculate_reward()
-                info.update({
-                    'weighted_pressure': weighted_pressure,
-                    'weighted_cost': weighted_cost,
-                    'pressure_deficit': pressure_deficit,
-                    'reward': reward
-                })
             except Exception as e:
                 print(f"Simulation failed at network completion: {e}")
-                reward = -1  # Penalize for failed simulation
+                reward = -1  # Penalize for simulation failure
                 terminated = True
 
-            # 4. Prepare for the next network or end the episode
+            # Prepare for the next network or end the episode
             self.current_step_index += 1
             if self.current_step_index >= len(self.network_files):
                 terminated = True  # All networks processed, episode ends
             else:
-                # Load the next network and carry over modified pipe diameters
                 self.budget += self.budget_step
                 next_inp_file = os.path.join(self.network_files_dir, self.network_files[self.current_step_index])
                 next_wn = WaterNetworkModel(next_inp_file)
@@ -355,11 +457,9 @@ class PPOEnv(gym.Env):
                         next_wn.get_link(pipe_name).diameter = pipe.diameter
                 self.wn = next_wn
                 
-                # Reset pipe index and action list for the new network
                 self.current_pipe_index = 0
                 self.actions_for_current_network = []
                 
-                # Run a simulation for the new, unmodified network to get its initial state for the observation
                 try:
                     self.results = run_epanet_sim(self.wn)
                 except Exception as e:
@@ -468,9 +568,9 @@ def main():
         # Print reward only if a network was completed
         if info.get('network_completed', False):
             print(f"  Network Completed! Reward: {reward:.4f}")
-            print(f"    - Weighted Pressure: {info['weighted_pressure']:.4f}")
-            print(f"    - Weighted Cost: {info['weighted_cost']:.4f}")
-            print(f"    - Pressure Deficit: {info['pressure_deficit']:.4f} m")
+            # print(f"    - Weighted Pressure: {info['weighted_pressure']:.4f}")
+            # print(f"    - Weighted Cost: {info['weighted_cost']:.4f}")
+            # print(f"    - Pressure Deficit: {info['pressure_deficit']:.4f} m")
         
         # Check if we've moved to a new network
         if env.current_step_index != current_network_index:

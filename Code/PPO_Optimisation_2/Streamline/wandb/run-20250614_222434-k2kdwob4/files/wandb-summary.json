@@ -1,1 +1,0 @@
-{"_wandb":{"runtime":3},"training/reward":0,"_timestamp":1.749936277000191e+09,"global_step":13,"training/value":-0.07831545919179916,"charts/learning_rate":0.0003,"_step":12,"training/action":2,"training/entropy":1.9438190460205078,"charts/episodic_length":5,"_runtime":3.3827835,"charts/episodic_return":-10}

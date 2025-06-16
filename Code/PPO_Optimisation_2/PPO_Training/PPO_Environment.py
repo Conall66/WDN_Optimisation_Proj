@@ -37,8 +37,10 @@ class WNTRGymEnv(gym.Env):
             reward_mode: str = 'full_objective',  # Options: 'minimise_pd', 'pd_and_cost', 'full_objective'
             initial_budget_per_step: float = 100000.0,  # Example: Budget added each major step
             start_of_episode_budget: float = 200000.0, # Example: Lump sum at episode start
-            budget_exceeded_penalty_type: str = "set_to_zero", # Options: "set_to_zero", "multiplicative"
-            budget_penalty_factor: float = 0.5 # Used if penalty_type is "multiplicative"
+            # budget_exceeded_penalty_type: str = "set_to_zero", # Options: "set_to_zero", "multiplicative"
+            # budget_penalty_factor: float = 0.5 # Used if penalty_type is "multiplicative"
+            ongoing_debt_penalty_factor: float = 0.0001, # Penalty per unit of debt, per step
+            max_debt: float = 2000000.0 # Terminate episode if debt exceeds this value
             ):
         
         super(WNTRGymEnv, self).__init__()
@@ -69,8 +71,12 @@ class WNTRGymEnv(gym.Env):
 
         self.initial_budget_per_step = initial_budget_per_step
         self.start_of_episode_budget = start_of_episode_budget
-        self.budget_exceeded_penalty_type = budget_exceeded_penalty_type
-        self.budget_penalty_factor = budget_penalty_factor
+        # self.budget_exceeded_penalty_type = budget_exceeded_penalty_type
+        # self.budget_penalty_factor = budget_penalty_factor
+        self.ongoing_debt_penalty_factor = ongoing_debt_penalty_factor
+        self.max_debt = max_debt
+        # This will now be the single source of truth for the episode's budget
+        self.cumulative_budget = 0.0
         self.current_step_budget_available = 0.0 # Budget for the current major step decisions
         # self.spent_on_interventions_this_step = 0.0 # This will be cost_of_intervention
 
@@ -316,7 +322,10 @@ class WNTRGymEnv(gym.Env):
         
         self.network_states = self.load_network_states(self.current_scenario)
 
-        self._initialize_episode_budget() # Initialize budget at the start of the episode
+        # self._initialize_episode_budget() # Initialize budget at the start of the episode
+
+        self.cumulative_budget = self.start_of_episode_budget + self.initial_budget_per_step
+
         self._calculate_episode_normalization_constants() # Sets self.episode_max_pd, self.episode_max_cost #
         
         self.current_time_step = 0

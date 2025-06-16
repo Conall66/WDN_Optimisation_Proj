@@ -1,1 +1,0 @@
-{"charts/learning_rate":0.0003,"charts/episodic_length":3,"_timestamp":1.7499358017047665e+09,"charts/episodic_return":-10,"_step":3,"_runtime":2.3433338,"training/action":2,"_wandb":{"runtime":2},"global_step":2,"training/entropy":1.9438190460205078,"training/value":-0.07831545174121857,"training/reward":0}
