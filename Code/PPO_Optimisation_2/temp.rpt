@@ -1,0 +1,571 @@
+<<<<<<< HEAD:Code/temp.rpt
+  Page 1                                    Wed Jun 18 00:42:35 2025
+=======
+  Page 1                                    Mon May 26 20:07:48 2025
+>>>>>>> parent of 3ae9910 (Lil bit file management):Code/PPO_Optimisation_2/temp.rpt
+
+  ******************************************************************
+  *                           E P A N E T                          *
+  *                   Hydraulic and Water Quality                  *
+  *                   Analysis for Pipe Networks                   *
+  *                         Version 2.2                            *
+  ******************************************************************
+  
+<<<<<<< HEAD:Code/temp.rpt
+  Analysis begun Wed Jun 18 00:42:35 2025
+=======
+  Analysis begun Mon May 26 20:07:48 2025
+>>>>>>> parent of 3ae9910 (Lil bit file management):Code/PPO_Optimisation_2/temp.rpt
+
+   
+  Hydraulic Status:
+  -----------------------------------------------------------------------
+     0:00:00: Balancing the network:
+
+<<<<<<< HEAD:Code/temp.rpt
+              Trial  1: relative flow change = 1.166388
+              Trial  2: relative flow change = 0.333984
+              Pipe 142 switched from open to closed
+              Pipe 143 switched from open to closed
+              Pump 78 switched from open to closed
+              Trial  3: relative flow change = 1.045060
+              Trial  4: relative flow change = 0.149600
+              Pump 78 switched from closed to open
+              Trial  5: relative flow change = 0.137751
+              Trial  6: relative flow change = 0.028187
+              Trial  7: relative flow change = 0.001530
+                        maximum  flow change = 5.6954 for Link 12
+                        maximum  head error  = 0.0024 for Link 11
+=======
+              Trial  1: relative flow change = 0.989012
+              Trial  2: relative flow change = 0.216300
+              Pipe 142 switched from open to closed
+              Pipe 143 switched from open to closed
+              Trial  3: relative flow change = 1.137251
+              Trial  4: relative flow change = 0.115947
+              Trial  5: relative flow change = 0.026393
+              Trial  6: relative flow change = 0.001331
+                        maximum  flow change = 6.7978 for Link 28
+                        maximum  head error  = 0.0088 for Link 28
+>>>>>>> parent of 3ae9910 (Lil bit file management):Code/PPO_Optimisation_2/temp.rpt
+
+     0:00:00: Balanced after 6 trials
+     0:00:00: Reservoir 40 is emptying
+     0:00:00: Tank 41 is closed at 3.05 m
+     0:00:00: Tank 42 is closed at 3.05 m
+     0:00:00: Pipe 142 temporarily closed
+     0:00:00: Pipe 143 temporarily closed
+   
+  WARNING: Negative pressures at 0:00:00 hrs.
+  WARNING: Pump 79 open but exceeds maximum flow at 0:00:00 hrs.
+  WARNING: Pump 80 open but exceeds maximum flow at 0:00:00 hrs.
+   
+     1:00:00: Balancing the network:
+
+<<<<<<< HEAD:Code/temp.rpt
+              Trial  1: relative flow change = 0.035799
+              Trial  2: relative flow change = 0.008885
+                        maximum  flow change = 98.7592 for Link 78
+                        maximum  head error  = 0.6150 for Link 78
+=======
+              Trial  1: relative flow change = 0.000006
+                        maximum  flow change = 0.0215 for Link 28
+                        maximum  head error  = 0.0000 for Link 28
+>>>>>>> parent of 3ae9910 (Lil bit file management):Code/PPO_Optimisation_2/temp.rpt
+
+     1:00:00: Balanced after 1 trials
+   
+  WARNING: Negative pressures at 1:00:00 hrs.
+  WARNING: Pump 79 open but exceeds maximum flow at 1:00:00 hrs.
+  WARNING: Pump 80 open but exceeds maximum flow at 1:00:00 hrs.
+   
+     2:00:00: Balancing the network:
+
+<<<<<<< HEAD:Code/temp.rpt
+              Trial  1: relative flow change = 0.002740
+                        maximum  flow change = 30.4491 for Link 78
+                        maximum  head error  = 0.0000 for Link 2
+=======
+              Trial  1: relative flow change = 0.000000
+                        maximum  flow change = 0.0000 for Link 125
+                        maximum  head error  = 0.0000 for Link pipe_26_5
+>>>>>>> parent of 3ae9910 (Lil bit file management):Code/PPO_Optimisation_2/temp.rpt
+
+     2:00:00: Balanced after 1 trials
+   
+  WARNING: Negative pressures at 2:00:00 hrs.
+  WARNING: Pump 79 open but exceeds maximum flow at 2:00:00 hrs.
+  WARNING: Pump 80 open but exceeds maximum flow at 2:00:00 hrs.
+   
+     3:00:00: Balancing the network:
+
+<<<<<<< HEAD:Code/temp.rpt
+              Trial  1: relative flow change = 0.151788
+              Trial  2: relative flow change = 0.046386
+              Pump 78 switched from open to closed
+              Trial  3: relative flow change = 0.030364
+              Trial  4: relative flow change = 0.000000
+                        maximum  flow change = 0.0000 for Link 32
+                        maximum  head error  = 0.0000 for Link 2
+=======
+              Trial  1: relative flow change = 0.111111
+              Trial  2: relative flow change = 0.000000
+                        maximum  flow change = 0.0001 for Link 4
+                        maximum  head error  = 0.0000 for Link pipe_26_5
+>>>>>>> parent of 3ae9910 (Lil bit file management):Code/PPO_Optimisation_2/temp.rpt
+
+     3:00:00: Balanced after 4 trials
+     3:00:00: Pump 78 changed from open to closed because cannot deliver head
+   
+  WARNING: Negative pressures at 3:00:00 hrs.
+<<<<<<< HEAD:Code/temp.rpt
+  WARNING: Pump 78 closed because cannot deliver head at 3:00:00 hrs.
+=======
+  WARNING: Pump 78 open but exceeds maximum flow at 3:00:00 hrs.
+>>>>>>> parent of 3ae9910 (Lil bit file management):Code/PPO_Optimisation_2/temp.rpt
+  WARNING: Pump 79 open but exceeds maximum flow at 3:00:00 hrs.
+  WARNING: Pump 80 open but exceeds maximum flow at 3:00:00 hrs.
+   
+     4:00:00: Balancing the network:
+
+<<<<<<< HEAD:Code/temp.rpt
+              Trial  1: relative flow change = 0.072493
+              Trial  2: relative flow change = 0.046386
+              Pump 78 switched from open to closed
+              Trial  3: relative flow change = 0.030364
+              Trial  4: relative flow change = 0.000000
+                        maximum  flow change = 0.0000 for Link 32
+                        maximum  head error  = 0.0000 for Link 1
+=======
+              Trial  1: relative flow change = 0.000000
+                        maximum  flow change = 0.0000 for Link 4
+                        maximum  head error  = 0.0000 for Link pipe_26_6
+>>>>>>> parent of 3ae9910 (Lil bit file management):Code/PPO_Optimisation_2/temp.rpt
+
+     4:00:00: Balanced after 4 trials
+   
+  WARNING: Negative pressures at 4:00:00 hrs.
+<<<<<<< HEAD:Code/temp.rpt
+  WARNING: Pump 78 closed because cannot deliver head at 4:00:00 hrs.
+=======
+  WARNING: Pump 78 open but exceeds maximum flow at 4:00:00 hrs.
+>>>>>>> parent of 3ae9910 (Lil bit file management):Code/PPO_Optimisation_2/temp.rpt
+  WARNING: Pump 79 open but exceeds maximum flow at 4:00:00 hrs.
+  WARNING: Pump 80 open but exceeds maximum flow at 4:00:00 hrs.
+   
+     5:00:00: Balancing the network:
+
+<<<<<<< HEAD:Code/temp.rpt
+              Trial  1: relative flow change = 0.016952
+              Trial  2: relative flow change = 0.000000
+                        maximum  flow change = 0.0000 for Link 32
+                        maximum  head error  = 0.0000 for Link 1
+
+              Pump 78 switched from open to closed
+              Trial  3: relative flow change = 0.017244
+              Trial  4: relative flow change = 0.000000
+                        maximum  flow change = 0.0000 for Link 4
+                        maximum  head error  = 0.0000 for Link 3
+
+     5:00:00: Balanced after 4 trials
+   
+  WARNING: Negative pressures at 5:00:00 hrs.
+  WARNING: Pump 78 closed because cannot deliver head at 5:00:00 hrs.
+=======
+              Trial  1: relative flow change = 0.000000
+                        maximum  flow change = 0.0000 for Link 4
+                        maximum  head error  = 0.0000 for Link pipe_26_5
+
+     5:00:00: Balanced after 1 trials
+   
+  WARNING: Negative pressures at 5:00:00 hrs.
+  WARNING: Pump 78 open but exceeds maximum flow at 5:00:00 hrs.
+>>>>>>> parent of 3ae9910 (Lil bit file management):Code/PPO_Optimisation_2/temp.rpt
+  WARNING: Pump 79 open but exceeds maximum flow at 5:00:00 hrs.
+  WARNING: Pump 80 open but exceeds maximum flow at 5:00:00 hrs.
+   
+     6:00:00: Balancing the network:
+
+<<<<<<< HEAD:Code/temp.rpt
+              Trial  1: relative flow change = 0.452782
+              Trial  2: relative flow change = 0.032029
+              Trial  3: relative flow change = 0.000000
+                        maximum  flow change = 0.0000 for Link 4
+                        maximum  head error  = 0.0000 for Link 3
+=======
+              Trial  1: relative flow change = 0.285714
+              Trial  2: relative flow change = 0.000000
+                        maximum  flow change = 0.0002 for Link 4
+                        maximum  head error  = 0.0000 for Link pipe_26_6
+>>>>>>> parent of 3ae9910 (Lil bit file management):Code/PPO_Optimisation_2/temp.rpt
+
+     6:00:00: Balanced after 3 trials
+     6:00:00: Pump 78 changed from closed because cannot deliver head to open
+   
+  WARNING: Negative pressures at 6:00:00 hrs.
+   
+     7:00:00: Balancing the network:
+
+              Trial  1: relative flow change = 0.000000
+                        maximum  flow change = 0.0000 for Link 4
+                        maximum  head error  = 0.0000 for Link pipe_26_6
+
+     7:00:00: Balanced after 1 trials
+   
+  WARNING: Negative pressures at 7:00:00 hrs.
+   
+     8:00:00: Balancing the network:
+
+              Trial  1: relative flow change = 0.000000
+<<<<<<< HEAD:Code/temp.rpt
+                        maximum  flow change = 0.0000 for Link 32
+                        maximum  head error  = 0.0000 for Link 2
+=======
+                        maximum  flow change = 0.0000 for Link 40
+                        maximum  head error  = 0.0000 for Link pipe_26_5
+>>>>>>> parent of 3ae9910 (Lil bit file management):Code/PPO_Optimisation_2/temp.rpt
+
+     8:00:00: Balanced after 1 trials
+   
+  WARNING: Negative pressures at 8:00:00 hrs.
+   
+     9:00:00: Balancing the network:
+
+              Trial  1: relative flow change = 0.166667
+              Trial  2: relative flow change = 0.000000
+<<<<<<< HEAD:Code/temp.rpt
+                        maximum  flow change = 0.0000 for Link 4
+                        maximum  head error  = 0.0000 for Link 2
+=======
+                        maximum  flow change = 0.0001 for Link 4
+                        maximum  head error  = 0.0000 for Link pipe_26_6
+>>>>>>> parent of 3ae9910 (Lil bit file management):Code/PPO_Optimisation_2/temp.rpt
+
+     9:00:00: Balanced after 2 trials
+   
+  WARNING: Negative pressures at 9:00:00 hrs.
+   
+    10:00:00: Balancing the network:
+
+              Trial  1: relative flow change = 0.000000
+<<<<<<< HEAD:Code/temp.rpt
+                        maximum  flow change = 0.0000 for Link 38
+                        maximum  head error  = 0.0000 for Link 1
+=======
+                        maximum  flow change = 0.0000 for Link 4
+                        maximum  head error  = 0.0000 for Link pipe_26_6
+>>>>>>> parent of 3ae9910 (Lil bit file management):Code/PPO_Optimisation_2/temp.rpt
+
+    10:00:00: Balanced after 1 trials
+   
+  WARNING: Negative pressures at 10:00:00 hrs.
+   
+    11:00:00: Balancing the network:
+
+              Trial  1: relative flow change = 0.000000
+                        maximum  flow change = 0.0000 for Link 4
+<<<<<<< HEAD:Code/temp.rpt
+                        maximum  head error  = 0.0000 for Link 3
+=======
+                        maximum  head error  = 0.0000 for Link pipe_26_6
+>>>>>>> parent of 3ae9910 (Lil bit file management):Code/PPO_Optimisation_2/temp.rpt
+
+    11:00:00: Balanced after 1 trials
+   
+  WARNING: Negative pressures at 11:00:00 hrs.
+   
+    12:00:00: Balancing the network:
+
+              Trial  1: relative flow change = 0.500000
+<<<<<<< HEAD:Code/temp.rpt
+              Trial  2: relative flow change = 0.058780
+              Trial  3: relative flow change = 0.000788
+                        maximum  flow change = 10.5080 for Link 78
+                        maximum  head error  = 0.0000 for Link 3
+=======
+              Trial  2: relative flow change = 0.000000
+                        maximum  flow change = 0.0020 for Link 4
+                        maximum  head error  = 0.0000 for Link pipe_26_6
+>>>>>>> parent of 3ae9910 (Lil bit file management):Code/PPO_Optimisation_2/temp.rpt
+
+    12:00:00: Balanced after 2 trials
+   
+  WARNING: Negative pressures at 12:00:00 hrs.
+  WARNING: Pump 78 open but exceeds maximum flow at 12:00:00 hrs.
+   
+    13:00:00: Balancing the network:
+
+              Trial  1: relative flow change = 0.000000
+<<<<<<< HEAD:Code/temp.rpt
+                        maximum  flow change = 0.0000 for Link 4
+                        maximum  head error  = 0.0000 for Link 78
+=======
+                        maximum  flow change = 0.0000 for Link 33
+                        maximum  head error  = 0.0000 for Link pipe_26_5
+>>>>>>> parent of 3ae9910 (Lil bit file management):Code/PPO_Optimisation_2/temp.rpt
+
+    13:00:00: Balanced after 1 trials
+   
+  WARNING: Negative pressures at 13:00:00 hrs.
+  WARNING: Pump 78 open but exceeds maximum flow at 13:00:00 hrs.
+   
+    14:00:00: Balancing the network:
+
+              Trial  1: relative flow change = 0.000000
+                        maximum  flow change = 0.0000 for Link 4
+<<<<<<< HEAD:Code/temp.rpt
+                        maximum  head error  = 0.0000 for Link 3
+=======
+                        maximum  head error  = 0.0000 for Link pipe_26_5
+>>>>>>> parent of 3ae9910 (Lil bit file management):Code/PPO_Optimisation_2/temp.rpt
+
+    14:00:00: Balanced after 1 trials
+   
+  WARNING: Negative pressures at 14:00:00 hrs.
+  WARNING: Pump 78 open but exceeds maximum flow at 14:00:00 hrs.
+   
+    15:00:00: Balancing the network:
+
+              Trial  1: relative flow change = 0.078423
+              Trial  2: relative flow change = 0.000000
+<<<<<<< HEAD:Code/temp.rpt
+                        maximum  flow change = 0.0000 for Link 4
+                        maximum  head error  = 0.0000 for Link 2
+=======
+                        maximum  flow change = 0.0001 for Link 4
+                        maximum  head error  = 0.0000 for Link pipe_28_12
+>>>>>>> parent of 3ae9910 (Lil bit file management):Code/PPO_Optimisation_2/temp.rpt
+
+    15:00:00: Balanced after 2 trials
+   
+  WARNING: Negative pressures at 15:00:00 hrs.
+  WARNING: Pump 78 open but exceeds maximum flow at 15:00:00 hrs.
+   
+    16:00:00: Balancing the network:
+
+              Trial  1: relative flow change = 0.000000
+                        maximum  flow change = 0.0000 for Link 4
+<<<<<<< HEAD:Code/temp.rpt
+                        maximum  head error  = 0.0000 for Link 2
+=======
+                        maximum  head error  = 0.0000 for Link pipe_28_12
+>>>>>>> parent of 3ae9910 (Lil bit file management):Code/PPO_Optimisation_2/temp.rpt
+
+    16:00:00: Balanced after 1 trials
+   
+  WARNING: Negative pressures at 16:00:00 hrs.
+  WARNING: Pump 78 open but exceeds maximum flow at 16:00:00 hrs.
+   
+    17:00:00: Balancing the network:
+
+<<<<<<< HEAD:Code/temp.rpt
+              Trial  1: relative flow change = 0.023497
+              Trial  2: relative flow change = 0.000000
+                        maximum  flow change = 0.0000 for Link 32
+                        maximum  head error  = 0.0000 for Link 1
+=======
+              Trial  1: relative flow change = 0.000000
+                        maximum  flow change = 0.0000 for Link 4
+                        maximum  head error  = 0.0000 for Link pipe_26_5
+>>>>>>> parent of 3ae9910 (Lil bit file management):Code/PPO_Optimisation_2/temp.rpt
+
+    17:00:00: Balanced after 1 trials
+   
+  WARNING: Negative pressures at 17:00:00 hrs.
+  WARNING: Pump 78 open but exceeds maximum flow at 17:00:00 hrs.
+   
+    18:00:00: Balancing the network:
+
+              Trial  1: relative flow change = 0.085485
+              Trial  2: relative flow change = 0.000000
+<<<<<<< HEAD:Code/temp.rpt
+                        maximum  flow change = 0.0000 for Link 4
+                        maximum  head error  = 0.0000 for Link 1
+=======
+                        maximum  flow change = 0.0001 for Link 4
+                        maximum  head error  = 0.0000 for Link pipe_26_6
+>>>>>>> parent of 3ae9910 (Lil bit file management):Code/PPO_Optimisation_2/temp.rpt
+
+    18:00:00: Balanced after 2 trials
+   
+  WARNING: Negative pressures at 18:00:00 hrs.
+  WARNING: Pump 78 open but exceeds maximum flow at 18:00:00 hrs.
+   
+    19:00:00: Balancing the network:
+
+<<<<<<< HEAD:Code/temp.rpt
+              Trial  1: relative flow change = 0.025952
+              Trial  2: relative flow change = 0.000000
+                        maximum  flow change = 0.0000 for Link 4
+                        maximum  head error  = 0.0000 for Link 1
+
+    19:00:00: Balanced after 2 trials
+   
+  WARNING: Negative pressures at 19:00:00 hrs.
+   
+    20:00:00: Balancing the network:
+
+              Trial  1: relative flow change = 0.000000
+                        maximum  flow change = 0.0000 for Link 4
+                        maximum  head error  = 0.0000 for Link 2
+
+    20:00:00: Balanced after 1 trials
+   
+  WARNING: Negative pressures at 20:00:00 hrs.
+   
+    21:00:00: Balancing the network:
+
+              Trial  1: relative flow change = 0.095506
+              Trial  2: relative flow change = 0.000000
+                        maximum  flow change = 0.0000 for Link 4
+                        maximum  head error  = 0.0000 for Link 3
+
+    21:00:00: Balanced after 2 trials
+   
+  WARNING: Negative pressures at 21:00:00 hrs.
+  WARNING: Pump 79 open but exceeds maximum flow at 21:00:00 hrs.
+  WARNING: Pump 80 open but exceeds maximum flow at 21:00:00 hrs.
+   
+    22:00:00: Balancing the network:
+
+              Trial  1: relative flow change = 0.029236
+              Trial  2: relative flow change = 0.001595
+                        maximum  flow change = 19.5008 for Link 78
+                        maximum  head error  = 0.0000 for Link 1
+
+    22:00:00: Balanced after 2 trials
+   
+  WARNING: Negative pressures at 22:00:00 hrs.
+  WARNING: Pump 79 open but exceeds maximum flow at 22:00:00 hrs.
+  WARNING: Pump 80 open but exceeds maximum flow at 22:00:00 hrs.
+   
+    23:00:00: Balancing the network:
+
+              Trial  1: relative flow change = 0.000000
+                        maximum  flow change = 0.0000 for Link 4
+                        maximum  head error  = 0.0000 for Link 1
+
+    23:00:00: B  flow change = 0.0000 for Link 4
+                        maximum  head error  = 0.0000 for Link 1
+
+    18:00:00: Balanced after 2 trials
+   
+  WARNING: Negative pressures at 18:00:00 hrs.
+  WARNING: Pump 78 open but exceeds maximum flow at 18:00:00 hrs.
+   
+    19:00:00: Balancing the network:
+
+              Trial  1: relative flow change = 0.026395
+              Trial  2: relative flow change = 0.000000
+                        maximum  flow change = 0.0000 for Link 4
+                        maximum  head error  = 0.0000 for Link 26
+
+    19:00:00: Balanced after 2 trials
+=======
+              Trial  1: relative flow change = 0.000000
+                        maximum  flow change = 0.0000 for Link 33
+                        maximum  head error  = 0.0000 for Link pipe_26_6
+
+    19:00:00: Balanced after 1 trials
+>>>>>>> parent of 3ae9910 (Lil bit file management):Code/PPO_Optimisation_2/temp.rpt
+   
+  WARNING: Negative pressures at 19:00:00 hrs.
+  WARNING: Pump 78 open but exceeds maximum flow at 19:00:00 hrs.
+  WARNING: Pump 79 open but exceeds maximum flow at 19:00:00 hrs.
+  WARNING: Pump 80 open but exceeds maximum flow at 19:00:00 hrs.
+   
+    20:00:00: Balancing the network:
+
+              Trial  1: relative flow change = 0.000000
+<<<<<<< HEAD:Code/temp.rpt
+                        maximum  flow change = 0.0000 for Link 4
+                        maximum  head error  = 0.0000 for Link 1
+=======
+                        maximum  flow change = 0.0000 for Link 40
+                        maximum  head error  = 0.0000 for Link pipe_26_5
+>>>>>>> parent of 3ae9910 (Lil bit file management):Code/PPO_Optimisation_2/temp.rpt
+
+    20:00:00: Balanced after 1 trials
+   
+  WARNING: Negative pressures at 20:00:00 hrs.
+  WARNING: Pump 78 open but exceeds maximum flow at 20:00:00 hrs.
+  WARNING: Pump 79 open but exceeds maximum flow at 20:00:00 hrs.
+  WARNING: Pump 80 open but exceeds maximum flow at 20:00:00 hrs.
+   
+    21:00:00: Balancing the network:
+
+              Trial  1: relative flow change = 0.094681
+              Trial  2: relative flow change = 0.000000
+<<<<<<< HEAD:Code/temp.rpt
+                        maximum  flow change = 0.0000 for Link 4
+                        maximum  head error  = 0.0000 for Link 27
+=======
+                        maximum  flow change = 0.0001 for Link 4
+                        maximum  head error  = 0.0000 for Link pipe_28_12
+>>>>>>> parent of 3ae9910 (Lil bit file management):Code/PPO_Optimisation_2/temp.rpt
+
+    21:00:00: Balanced after 2 trials
+   
+  WARNING: Negative pressures at 21:00:00 hrs.
+  WARNING: Pump 79 open but exceeds maximum flow at 21:00:00 hrs.
+  WARNING: Pump 80 open but exceeds maximum flow at 21:00:00 hrs.
+   
+    22:00:00: Balancing the network:
+
+<<<<<<< HEAD:Code/temp.rpt
+              Trial  1: relative flow change = 0.029690
+              Trial  2: relative flow change = 0.001088
+                        maximum  flow change = 12.9647 for Link 78
+                        maximum  head error  = 0.0000 for Link 26
+=======
+              Trial  1: relative flow change = 0.000000
+                        maximum  flow change = 0.0000 for Link 40
+                        maximum  head error  = 0.0000 for Link pipe_26_6
+>>>>>>> parent of 3ae9910 (Lil bit file management):Code/PPO_Optimisation_2/temp.rpt
+
+    22:00:00: Balanced after 1 trials
+   
+  WARNING: Negative pressures at 22:00:00 hrs.
+  WARNING: Pump 79 open but exceeds maximum flow at 22:00:00 hrs.
+  WARNING: Pump 80 open but exceeds maximum flow at 22:00:00 hrs.
+   
+    23:00:00: Balancing the network:
+
+              Trial  1: relative flow change = 0.000000
+<<<<<<< HEAD:Code/temp.rpt
+                        maximum  flow change = 0.0000 for Link 4
+                        maximum  head error  = 0.0000 for Link 27
+=======
+                        maximum  flow change = 0.0000 for Link 40
+                        maximum  head error  = 0.0000 for Link pipe_28_12
+>>>>>>> parent of 3ae9910 (Lil bit file management):Code/PPO_Optimisation_2/temp.rpt
+
+    23:00:00: Balanced after 1 trials
+   
+  WARNING: Negative pressures at 23:00:00 hrs.
+  WARNING: Pump 79 open but exceeds maximum flow at 23:00:00 hrs.
+  WARNING: Pump 80 open but exceeds maximum flow at 23:00:00 hrs.
+   
+    24:00:00: Balancing the network:
+
+              Trial  1: relative flow change = 0.100000
+              Trial  2: relative flow change = 0.000000
+<<<<<<< HEAD:Code/temp.rpt
+                        maximum  flow change = 0.0000 for Link 4
+                        maximum  head error  = 0.0000 for Link 29
+=======
+                        maximum  flow change = 0.0001 for Link 4
+                        maximum  head error  = 0.0000 for Link pipe_28_12
+>>>>>>> parent of 3ae9910 (Lil bit file management):Code/PPO_Optimisation_2/temp.rpt
+
+    24:00:00: Balanced after 2 trials
+   
+  WARNING: Negative pressures at 24:00:00 hrs.
+  WARNING: Pump 79 open but exceeds maximum flow at 24:00:00 hrs.
+  WARNING: Pump 80 open but exceeds maximum flow at 24:00:00 hrs.
+<<<<<<< HEAD:Code/temp.rpt
+   
+=======
+   
+  Analysis ended Mon May 26 20:07:48 2025
+>>>>>>> parent of 3ae9910 (Lil bit file management):Code/PPO_Optimisation_2/temp.rpt

@@ -269,12 +269,21 @@ class WNTRGymEnv(gym.Env):
         # After setting all diameters, save current state
         self.chosen_diameters_from_previous_step = {p: self.current_network.get_link(p).diameter for p in self.pipe_names}
         self.chosen_roughness_from_previous_step = {p: self.current_network.get_link(p).roughness for p in self.pipe_names}
+
+        # DEBUG HERE: print the diameters of all pipes in the current network
+        # print(f"Loaded network for timestep {self.current_time_step} with {len(self.pipe_names)} pipes.")
+        # print("Pipe diameters:")
+        # for pipe_name in self.pipe_names:
+        #     pipe = self.current_network.get_link(pipe_name)
+        #     print(f"  {pipe_name}: diameter={pipe.diameter:.4f}m, roughness={pipe.roughness:.2f}")
     
         results, _, _ = self._simulate_network(self.current_network)
         if results:
+            print(f"Simulation successful for timestep {self.current_time_step}.")
             pressures = results.node['pressure']
             self.node_pressures = {node_name: pressures.loc[:, node_name].mean() for node_name in self.node_names if node_name in pressures.columns}
         else:
+            print(f"Simulation failed for timestep {self.current_time_step}. Setting all node pressures to 0.")
             self.node_pressures = {node_name: 0.0 for node_name in self.node_names}
 
     def _get_initial_metrics(self):

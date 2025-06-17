@@ -249,17 +249,6 @@ def run_training_experiment(
         # Generate heatmap for the last scenario in the list as a representative example
         rep_scenario = scenarios[-1]
         episode_df = generate_episode_data_for_viz(model_path, env_configs, rep_scenario)
-        # fig4 = plot_diameter_evolution_heatmap(episode_df, f"Diameter Evolution for {rep_scenario}\n({model_id})")
-        # fig4.savefig(os.path.join(plots_dir, "plot_4_diameter_heatmap.png")); plt.close(fig4)
-        # fig4 = plot_pipe_diameters_heatmap_over_time(
-        #     model_path = model_path,
-        #     pipes_config=PIPES_CONFIG,
-        #     scenarios_list=scenarios,
-        #     target_scenario_name=rep_scenario,
-        #     num_episodes_for_data=1,
-        #     save_dir=plots_dir,
-        # )
-        # plt.show()
 
         fig5 = plot_pipe_upgrade_frequency_over_time(log_df, model_id, window_size=500)
         fig5.savefig(os.path.join(plots_dir, "plot_5_pipe_upgrade_frequency.png")); plt.close(fig5)
@@ -297,7 +286,7 @@ if __name__ == "__main__":
     #     training_label="Hanoi_Only",
     #     scenarios=hanoi_scenarios,
     #     budget_config=BUDGET_CONFIG_HANOI,
-    #     total_timesteps=100_000,
+    #     total_timesteps=5_000,
     #     use_subproc_env=False
     # )
 
@@ -307,7 +296,7 @@ if __name__ == "__main__":
         training_label="Anytown_Only",
         scenarios=anytown_scenarios,
         budget_config=BUDGET_CONFIG_ANYTOWN,
-        total_timesteps=50_000,
+        total_timesteps=5_000,
         use_subproc_env=False
     )
     

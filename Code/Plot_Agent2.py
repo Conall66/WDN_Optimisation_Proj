@@ -244,13 +244,14 @@ def generate_episode_data_for_viz(model_path: str, env_configs: dict, target_sce
 # 3. PLOTTING FUNCTIONS
 # ===================================================================
 
-def plot_training_diagnostics(log_df: pd.DataFrame, experiment_details: str, roll_window=100):
+def plot_training_diagnostics(log_df: pd.DataFrame, experiment_details: str, roll_window=10):
     """PLOT 1: Core PPO training metrics over time."""
     fig, axes = plt.subplots(2, 2, figsize=(18, 12), sharex=True)
     fig.suptitle(f"Training Process Diagnostics\n{experiment_details}", fontsize=18, y=0.96)
     
     plot_specs = {
-        'total_reward': {'ax': axes[0, 0], 'title': 'Mean Episodic Reward', 'color': PLOT_COLORS[0]},
+        # 'total_reward': {'ax': axes[0, 0], 'title': 'Mean Episodic Reward', 'color': PLOT_COLORS[0]},
+        'step_reward': {'ax': axes[0, 0], 'title': 'Total Step Reward', 'color': PLOT_COLORS[0]},
         'kl_divergence': {'ax': axes[0, 1], 'title': 'KL Divergence', 'color': PLOT_COLORS[1]},
         'entropy_loss': {'ax': axes[1, 0], 'title': 'Entropy Loss', 'color': PLOT_COLORS[2]},
         'clip_fraction': {'ax': axes[1, 1], 'title': 'Clipping Fraction', 'color': PLOT_COLORS[3]}
@@ -270,7 +271,7 @@ def plot_training_diagnostics(log_df: pd.DataFrame, experiment_details: str, rol
     plt.tight_layout(rect=[0, 0, 1, 0.93])
     return fig
 
-def plot_reward_composition(log_df: pd.DataFrame, experiment_details: str, roll_window=100):
+def plot_reward_composition(log_df: pd.DataFrame, experiment_details: str, roll_window=10):
     """PLOT 2: Decomposes the total reward into its weighted components."""
     fig, axes = plt.subplots(2, 2, figsize=(18, 12), sharex=True)
     fig.suptitle(f"Reward Composition Over Time\n{experiment_details}", fontsize=18, y=0.96)

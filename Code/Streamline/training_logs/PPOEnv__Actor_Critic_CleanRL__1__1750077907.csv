@@ -1,2 +1,0 @@
-global_step,episodic_return,episodic_length,value_loss,policy_loss,entropy_loss,approx_kl,clipfrac,explained_variance,learning_rate
-0,-145.54470525251799,431,0.1368497610092163,-0.03992367163300514,-1.9184441566467285,-0.040137842297554016,0.4288989584235584,0.0021101832389831543,0.0003

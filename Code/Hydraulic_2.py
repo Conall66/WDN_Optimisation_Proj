@@ -9,6 +9,9 @@ import wntr
 import pandas as pd
 import wntr.sim.results
 import numpy as np
+import os
+import time
+from pathlib import Path
 
 def run_epanet_simulation(wn: wntr.network.WaterNetworkModel):
     """
@@ -20,18 +23,18 @@ def run_epanet_simulation(wn: wntr.network.WaterNetworkModel):
     Returns:
         A wntr Results object if the simulation is successful, otherwise None.
     """
-    try:
-        sim = wntr.sim.EpanetSimulator(wn)
-        results = sim.run_sim()
-        # A basic check for valid results (e.g., at least one timestep of pressure data)
-        if results is None or results.node['pressure'].empty:
-            # print("Warning: Simulation ran but produced no valid results.")
-            return None
-        return results
-    except Exception as e:
-        # Catch potential errors during simulation (e.g., network is disconnected)
-        # print(f"Error during EPANET simulation: {e}")
+    # try:
+    sim = wntr.sim.EpanetSimulator(wn)
+    results = sim.run_sim()
+    # A basic check for valid results (e.g., at least one timestep of pressure data)
+    if results is None or results.node['pressure'].empty:
+        # print("Warning: Simulation ran but produced no valid results.")
         return None
+    return results
+    # except Exception as e:
+    #     # Catch potential errors during simulation (e.g., network is disconnected)
+    #     print(f"Error during EPANET simulation: {e}")
+    #     return None
 
 def evaluate_network_performance(wn, results, final_time=3600):
     """
@@ -133,33 +136,147 @@ def evaluate_network_performance(wn, results, final_time=3600):
         # 'critical_pressure_violations': critical_pressure_violations,
     }
 
-if __name__ == "__main__":
-
-    # test_hydraulic.py
-    # Path to one of your network files
-    # Make sure the 'Modified_nets' folder is in the same directory
-    network_path = 'Networks2/hanoi_densifying_1/Step_50.inp'
-
-    print(f"Loading network: {network_path}")
+def test_network_file(file_path):
+    """Test a single network file"""
     try:
-        # 1. Load the network model
-        wn = wntr.network.WaterNetworkModel(network_path)
-        print("Network loaded successfully.")
-
-        # 2. Run the EPANET simulation
+        # Load the network
+        wn = wntr.network.WaterNetworkModel(file_path)
+        
+        # Run simulation
+        start_time = time.time()
         results = run_epanet_simulation(wn)
-        if results:
-            print("EPANET simulation ran successfully.")
-            
-            # 3. Evaluate the network performance
+        sim_time = time.time() - start_time
+        
+        if results is not None:
+            # Basic evaluation
             metrics = evaluate_network_performance(wn, results)
-            print("Network performance evaluated successfully.")
-            print("\n--- Performance Metrics ---")
-            for key, value in metrics.items():
-                print(f"{key}: {value:.2f}")
-            print("\n✅ Hydraulic module test passed!")
+            return {
+                'status': 'Success',
+                'sim_time': sim_time,
+                'total_energy_consumption': metrics['total_energy_consumption'],
+                'total_pump_cost': metrics['total_pump_cost'],
+                'demand_satisfaction_ratio': metrics['demand_satisfaction_ratio'],
+                'total_pressure_deficit': metrics['total_pressure_deficit'],
+                'total_pressure': metrics['total_pressure'],
+            }
         else:
-            print("\n❌ Hydraulic module test FAILED: Simulation did not produce results.")
-
+            return {
+                'status': 'Failed',
+                'sim_time': sim_time,
+                'error': 'Simulation produced no results'
+            }
     except Exception as e:
-        print(f"\n❌ An error occurred: {e}")
+        return {
+            'status': 'Error',
+            'error': str(e)
+        }
+
+def find_all_inp_files(base_folder):
+    """Find all .inp files in the given folder and its subfolders"""
+    inp_files = []
+    
+    for root, _, files in os.walk(base_folder):
+        for file in files:
+            if file.endswith('.inp'):
+                inp_files.append(os.path.join(root, file))
+    
+    return inp_files
+
+def test_all_networks(base_folder='Networks2'):
+    """Test all network files in the given folder"""
+    # Find all .inp files
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    networks_dir = os.path.join(script_dir, base_folder)
+    
+    if not os.path.exists(networks_dir):
+        print(f"ERROR: Networks folder not found at {networks_dir}")
+        return
+    
+    inp_files = find_all_inp_files(networks_dir)
+    if not inp_files:
+        print(f"No .inp files found in {networks_dir}")
+        return
+    
+    print(f"Found {len(inp_files)} .inp files to test")
+    
+    # Initialize results tracking
+    results = []
+    success_count = 0
+    
+    # Test each file
+    for i, file_path in enumerate(inp_files):
+        rel_path = os.path.relpath(file_path, networks_dir)
+        print(f"[{i+1}/{len(inp_files)}] Testing {rel_path}...", end="", flush=True)
+        
+        # Run test
+        test_result = test_network_file(file_path)
+        test_result['file'] = rel_path
+        results.append(test_result)
+        
+        # Print status
+        if test_result['status'] == 'Success':
+            success_count += 1
+            print(f" ✅ Success: {test_result['sim_time']:.2f}s, Energy: {test_result['total_energy_consumption']:.2f} kWh, Cost: ${test_result['total_pump_cost']:.2f}, Demand Satisfaction: {test_result['demand_satisfaction_ratio']:.2f}, Pressure Deficit: {test_result['total_pressure_deficit']:.2f} m")
+        else:
+            print(f" ❌ {test_result['status']}: {test_result.get('error', 'Unknown error')}")
+    
+    # Summarize results
+    print("\n===== Summary =====")
+    print(f"Total files tested: {len(inp_files)}")
+    print(f"Successful simulations: {success_count} ({success_count/len(inp_files)*100:.1f}%)")
+    print(f"Failed simulations: {len(inp_files) - success_count}")
+    
+    # Create DataFrame for analysis
+    df = pd.DataFrame(results)
+    
+    # Save results
+    results_path = os.path.join(script_dir, f"{base_folder}_test_results.csv")
+    df.to_csv(results_path, index=False)
+    print(f"\nDetailed results saved to: {results_path}")
+    
+    # Analyze failures by scenario
+    if len(inp_files) - success_count > 0:
+        print("\n===== Failures by Scenario =====")
+        # Extract scenario from file path
+        df['scenario'] = df['file'].apply(lambda x: Path(x).parts[0] if '/' in x or '\\' in x else 'unknown')
+        failure_by_scenario = df[df['status'] != 'Success'].groupby('scenario').size()
+        for scenario, count in failure_by_scenario.items():
+            print(f"{scenario}: {count} failures")
+    
+    return df
+
+if __name__ == "__main__":
+    print("Testing all networks in the Networks2 folder...")
+    results_df = test_all_networks()
+    print("\nTesting completed.")
+
+# if __name__ == "__main__":
+
+#     # test_hydraulic.py
+#     # Path to one of your network files
+#     # Make sure the 'Modified_nets' folder is in the same directory
+#     network_path = 'Networks2/hanoi_densifying_1/Step_50.inp'
+
+#     print(f"Loading network: {network_path}")
+#     try:
+#         # 1. Load the network model
+#         wn = wntr.network.WaterNetworkModel(network_path)
+#         print("Network loaded successfully.")
+
+#         # 2. Run the EPANET simulation
+#         results = run_epanet_simulation(wn)
+#         if results:
+#             print("EPANET simulation ran successfully.")
+            
+#             # 3. Evaluate the network performance
+#             metrics = evaluate_network_performance(wn, results)
+#             print("Network performance evaluated successfully.")
+#             print("\n--- Performance Metrics ---")
+#             for key, value in metrics.items():
+#                 print(f"{key}: {value:.2f}")
+#             print("\n✅ Hydraulic module test passed!")
+#         else:
+#             print("\n❌ Hydraulic module test FAILED: Simulation did not produce results.")
+
+#     except Exception as e:
+#         print(f"\n❌ An error occurred: {e}")
