@@ -1,42 +1,42 @@
 ; Filename: c:\Users\conal\OneDrive - Imperial College London\Imperial\Masters Project\Git_Sync\WDN_Optimisation_Proj\Code\PPO_Optimisation_2\PPO_Training\Modified_nets\hanoi-3.inp
 ; WNTR: 1.3.2
-; Created: 2025-06-03 23:47:29
+; Created: 2025-06-18 02:48:14
 [TITLE]
 Hanoi example by Fujiwara and Khang, Water Resources Research, 1990
 
 [JUNCTIONS]
 ;ID                      Elevation       Demand Pattern                 
- 2                                  0      1001.34923                            ;
- 3                                  0    961.34923004                            ;
- 4                                  0    241.34923004                            ;
- 5                                  0    836.34923004                            ;
- 6                                  0      1116.34923                            ;
- 7                                  0      1461.34923                            ;
- 8                                  0    661.34923004                            ;
- 9                                  0    636.34923004                            ;
- 10                                 0    636.34923004                            ;
- 11                                 0    611.34923004                            ;
- 12                                 0    671.34923004                            ;
- 13                                 0      1051.34923                            ;
- 14                                 0    726.34923004                            ;
- 15                                 0    391.34923004                            ;
- 16                                 0    421.34923004                            ;
- 17                                 0    976.34923004                            ;
- 18                                 0      1456.34923                            ;
- 19                                 0    171.34923004                            ;
- 20                                 0      1386.34923                            ;
- 21                                 0      1041.34923                            ;
- 22                                 0    596.34923004                            ;
- 23                                 0      1156.34923                            ;
- 24                                 0    931.34923004                            ;
- 25                                 0    281.34923004                            ;
- 26                                 0      1011.34923                            ;
- 27                                 0    481.34923004                            ;
- 28                                 0    401.34923004                            ;
- 29                                 0    471.34923004                            ;
- 30                                 0    471.34923004                            ;
- 31                                 0    216.34923004                            ;
- 32                                 0    916.34923004                            ;
+ 2                                  0      993.458286                            ;
+ 3                                  0      953.458286                            ;
+ 4                                  0      233.458286                            ;
+ 5                                  0      828.458286                            ;
+ 6                                  0     1108.458286                            ;
+ 7                                  0     1453.458286                            ;
+ 8                                  0      653.458286                            ;
+ 9                                  0      628.458286                            ;
+ 10                                 0      628.458286                            ;
+ 11                                 0      603.458286                            ;
+ 12                                 0      663.458286                            ;
+ 13                                 0     1043.458286                            ;
+ 14                                 0      718.458286                            ;
+ 15                                 0      383.458286                            ;
+ 16                                 0      413.458286                            ;
+ 17                                 0      968.458286                            ;
+ 18                                 0     1448.458286                            ;
+ 19                                 0      163.458286                            ;
+ 20                                 0     1378.458286                            ;
+ 21                                 0     1033.458286                            ;
+ 22                                 0      588.458286                            ;
+ 23                                 0     1148.458286                            ;
+ 24                                 0      923.458286                            ;
+ 25                                 0      273.458286                            ;
+ 26                                 0     1003.458286                            ;
+ 27                                 0      473.458286                            ;
+ 28                                 0      393.458286                            ;
+ 29                                 0      463.458286                            ;
+ 30                                 0      463.458286                            ;
+ 31                                 0      208.458286                            ;
+ 32                                 0      908.458286                            ;
 
 [RESERVOIRS]
 ;ID                                   Head                  Pattern
@@ -47,8 +47,8 @@ Hanoi example by Fujiwara and Khang, Water Resources Research, 1990
 
 [PIPES]
 ;ID                   Node1                Node2                              Length             Diameter            Roughness           Minor Loss               Status
- 1                    1                    2                                100            1016             130               0                 Open   ;
- 2                    2                    3                               1350            1016             130               0                 Open   ;
+ 1                    1                    2                                100           304.8             130               0                 Open   ;
+ 2                    2                    3                               1350           304.8             130               0                 Open   ;
  3                    3                    4                                900           304.8             130               0                 Open   ;
  4                    4                    5                               1150           304.8             130               0                 Open   ;
  5                    5                    6                               1450           304.8             130               0                 Open   ;
@@ -56,9 +56,9 @@ Hanoi example by Fujiwara and Khang, Water Resources Research, 1990
  7                    7                    8                                850           304.8             130               0                 Open   ;
  8                    8                    9                                850           304.8             130               0                 Open   ;
  9                    9                    10                               800           304.8             130               0                 Open   ;
- 10                   10                   11                               950            1016             130               0                 Open   ;
- 11                   11                   12                              1200            1016             130               0                 Open   ;
- 12                   12                   13                              3500            1016             130               0                 Open   ;
+ 10                   10                   11                               950           304.8             130               0                 Open   ;
+ 11                   11                   12                              1200           304.8             130               0                 Open   ;
+ 12                   12                   13                              3500           304.8             130               0                 Open   ;
  13                   10                   14                               800           304.8             130               0                 Open   ;
  14                   14                   15                               500           304.8             130               0                 Open   ;
  15                   15                   16                               550           304.8             130               0                 Open   ;
@@ -67,8 +67,8 @@ Hanoi example by Fujiwara and Khang, Water Resources Research, 1990
  18                   19                   18                               800           304.8             130               0                 Open   ;
  19                   3                    19                               400           304.8             130               0                 Open   ;
  20                   3                    20                              2200           304.8             130               0                 Open   ;
- 21                   20                   21                              1500            1016             130               0                 Open   ;
- 22                   21                   22                               500            1016             130               0                 Open   ;
+ 21                   20                   21                              1500           304.8             130               0                 Open   ;
+ 22                   21                   22                               500           304.8             130               0                 Open   ;
  23                   20                   23                              2650           304.8             130               0                 Open   ;
  24                   23                   24                              1230           304.8             130               0                 Open   ;
  25                   24                   25                              1300           304.8             130               0                 Open   ;
@@ -156,12 +156,12 @@ UNITS                CMH
 HEADLOSS             H-W                 
 SPECIFIC GRAVITY     1
 VISCOSITY            1
-TRIALS               40
+TRIALS               100
 ACCURACY             0.01
 CHECKFREQ            2
 MAXCHECK             10
 UNBALANCED           CONTINUE 10
-DEMAND MULTIPLIER    1
+DEMAND MULTIPLIER    0.75
 EMITTER EXPONENT     0.5
 QUALITY              NONE                
 DIFFUSIVITY          1

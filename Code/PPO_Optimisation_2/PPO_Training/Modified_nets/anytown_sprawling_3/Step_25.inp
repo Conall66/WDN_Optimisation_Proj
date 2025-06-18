@@ -5,13 +5,18 @@
 =======
 ; Filename: c:\Users\conal\OneDrive - Imperial College London\Imperial\Masters Project\Git_Sync\WDN_Optimisation_Proj\Code\PPO_Optimisation_2\PPO_Training\Modified_nets\anytown-3.inp
 ; WNTR: 1.3.2
+<<<<<<< Updated upstream
 ; Created: 2025-06-03 23:46:58
 >>>>>>> parent of 3ae9910 (Lil bit file management):Code/PPO_Optimisation_2/PPO_Training/Modified_nets/anytown_sprawling_3/Step_25.inp
+=======
+; Created: 2025-06-18 02:46:55
+>>>>>>> Stashed changes
 [TITLE]
 ANYTOWN example
 
 [JUNCTIONS]
 ;ID                      Elevation       Demand Pattern                 
+<<<<<<< Updated upstream
 <<<<<<< HEAD:Code/temp.inp
  1                              6.096    126.09393849 1                          ;
  2                              15.24    57.956526381 1                          ;
@@ -60,6 +65,31 @@ ANYTOWN example
  22                            36.576    60.864486228 1                          ;
  26                             39.33     30.23561349 1                          ;
 >>>>>>> parent of 3ae9910 (Lil bit file management):Code/PPO_Optimisation_2/PPO_Training/Modified_nets/anytown_sprawling_3/Step_25.inp
+=======
+ 1                              6.096    168.67176878 1                          ;
+ 2                              15.24    100.53435667 1                          ;
+ 3                              15.24    100.53435667 1                          ;
+ 4                              15.24    191.38423948 1                          ;
+ 5                             24.384    191.38423948 1                          ;
+ 6                             24.384    191.38423948 1                          ;
+ 7                             24.384    191.38423948 1                          ;
+ 8                             24.384    145.95929808 1                          ;
+ 9                             36.576    145.95929808 1                          ;
+ 10                            36.576    145.95929808 1                          ;
+ 11                            36.576    145.95929808 1                          ;
+ 12                             15.24    168.67176878 1                          ;
+ 13                             15.24    168.67176878 1                          ;
+ 14                             15.24    168.67176878 1                          ;
+ 15                             15.24    168.67176878 1                          ;
+ 16                            36.576    145.95929808 1                          ;
+ 17                            36.576     282.2341223 1                          ;
+ 18                             15.24    168.67176878 1                          ;
+ 19                             15.24     282.2341223 1                          ;
+ 20                             6.096    55.109415261 1                          ;
+ 21                             15.24    55.109415261 1                          ;
+ 22                            36.576    55.109415261 1                          ;
+ 26                             39.33    28.607896396 1                          ;
+>>>>>>> Stashed changes
 
 [RESERVOIRS]
 ;ID                                   Head                  Pattern
@@ -109,7 +139,7 @@ ANYTOWN example
 =======
  2                    1                    12                            3657.6           304.8              70               0                 Open   ;
  3                    1                    13                            3657.6           304.8              70               0                 Open   ;
- 4                    1                    20                             30.48             762             130               0                 Open   ;
+ 4                    1                    20                             30.48           304.8             130               0                 Open   ;
  5                    2                    3                             1828.8           304.8             120               0                 Open   ;
  6                    2                    4                             2743.2           304.8             120               0                 Open   ;
  7                    2                    13                            2743.2           304.8              70               0                 Open   ;
@@ -275,13 +305,13 @@ UNITS                CMH
 HEADLOSS             H-W                 
 SPECIFIC GRAVITY     1
 VISCOSITY            1
-TRIALS               40
+TRIALS               100
 ACCURACY             0.01
 CHECKFREQ            2
 MAXCHECK             10
 UNBALANCED           CONTINUE 10
 PATTERN              1                   
-DEMAND MULTIPLIER    1
+DEMAND MULTIPLIER    1.8
 EMITTER EXPONENT     0.5
 QUALITY              NONE                
 DIFFUSIVITY          1

@@ -213,7 +213,8 @@ if __name__ == "__main__":
             name = 'Anytown'
             # Enable pumps for Anytown
             wn = enable_pumps(wn)
-            exclude_pipes = ['4', '33', '40', '142', '143']
+            # exclude_pipes = ['4', '33', '40', '142', '143']
+            exclude_pipes = []
             for pipe, pipe_data in wn.pipes():
                 if pipe_data.name not in exclude_pipes:
                     pipe_data.diameter = min(discrete_diameters)
@@ -233,7 +234,8 @@ if __name__ == "__main__":
             #             pump_parameter = 50.0)
             name = 'Hanoi'
 
-            exclude_pipes = ['12', '11', '10', '2', '1', '21', '22']
+            # exclude_pipes = ['12', '11', '10', '2', '1', '21', '22']
+            exclude_pipes = []
             for pipe, pipe_data in wn.pipes():
                 if pipe_data.name not in exclude_pipes:
                     pipe_data.diameter = min(discrete_diameters)
