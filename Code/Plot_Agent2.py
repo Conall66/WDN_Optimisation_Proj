@@ -65,20 +65,20 @@ REWARD_CONFIG = {
 
 # Budget configurations tailored for different network scales
 BUDGET_CONFIG_HANOI = {
-        "initial_budget_per_step": 50000.0,
-        "start_of_episode_budget": 100000.0,
-        "ongoing_debt_penalty_factor": 0.0001,
-        "max_debt": 10000000.0,
-        "labour_cost_per_meter": 100.0
-    }
+    "initial_budget_per_step": 500_000.0,
+    "start_of_episode_budget": 10_000_000.0,
+    "ongoing_debt_penalty_factor": 0.0001,
+    "max_debt": 10_000_000.0,
+    "labour_cost_per_meter": 100.0
+}
     
 BUDGET_CONFIG_ANYTOWN = {
-        "initial_budget_per_step": 2000000.0,
-        "start_of_episode_budget": 4000000.0,
-        "ongoing_debt_penalty_factor": 0.0001,
-        "max_debt": 20000000.0,
-        "labour_cost_per_meter": 100.0
-    }
+    "initial_budget_per_step": 1_00_000.0,
+    "start_of_episode_budget": 20_000_000.0,
+    "ongoing_debt_penalty_factor": 0.0001,
+    "max_debt": 10_000_000.0,
+    "labour_cost_per_meter": 100.0
+}
 
 # List of all available scenarios
 ALL_SCENARIOS = [
@@ -102,63 +102,78 @@ class PlottingCallback(BaseCallback):
         self.log_dir = log_dir
         self.log_path = os.path.join(log_dir, 'training_log.csv')
         self.log_data = []
+        self.cumulative_pipe_changes = 0
+        self.action_type_counts = {}
+
+        # --- KEY CHANGE 1: Define columns in one place ---
+        self.log_columns = [
+            'timesteps', 'total_reward', 'kl_divergence', 'entropy_loss', 
+            'clip_fraction', 'step_reward', 'pipe_changes', 'cumulative_pipe_changes',
+            'cumulative_budget', 'pressure_deficit', 'demand_satisfaction', 
+            'cost_of_intervention', 'simulation_success', 'weighted_cost', 
+            'weighted_pd', 'weighted_demand', 'action_taken'
+        ]
 
     def _on_training_start(self) -> None:
         """Called once at the start of training."""
-        # Create log directory if it doesn't exist
         os.makedirs(self.log_dir, exist_ok=True)
-        # Initialize CSV with headers
-        pd.DataFrame(columns=[
-            'timesteps', 'total_reward', 'kl_divergence', 'entropy_loss', 
-            'clip_fraction', 'step_reward', 'pipe_changes', 'cumulative_budget',
-            'pressure_deficit', 'demand_satisfaction', 'cost_of_intervention',
-            'simulation_success', 'weighted_cost', 'weighted_pd', 'weighted_demand'
-        ]).to_csv(self.log_path, index=False)
+        # --- KEY CHANGE 2: Use the predefined column list to write the header ---
+        pd.DataFrame(columns=self.log_columns).to_csv(self.log_path, index=False)
 
     def _on_step(self) -> bool:
         """Called at each step in the training loop."""
-        # Check for 'dones' signal from VecEnv
-        if 'dones' in self.locals and self.locals['dones'].any():
-            # Retrieve info from the environment (handle SubprocVecEnv)
-            infos = self.locals.get("infos", [])
+        # Use 'dones' as the primary signal for logging, as 'infos' is always available.
+        if 'dones' in self.locals and self.locals['dones'][0]:
+            rewards = self.locals.get("rewards", [0])
+            infos = self.locals.get("infos", [{}])
+            actions = self.locals.get("actions", [0])
             
-            # Log data from the first environment for simplicity
-            info = infos[0] if infos else {}
+            info = infos[0]
+            action = actions[0] if len(actions) > 0 else 0
+            action_value = action.item() if hasattr(action, 'item') else action
 
-            # Collect standard PPO metrics from the logger
+            pipe_changes = info.get('pipe_changes', 0)
+            if pipe_changes is not None:
+                self.cumulative_pipe_changes += pipe_changes
+
             log_entry = {
-            'timesteps': self.num_timesteps,
-            'total_reward': self.logger.name_to_value.get('rollout/ep_rew_mean', 0),
-            'kl_divergence': self.logger.name_to_value.get('train/approx_kl', 0),
-            'entropy_loss': self.logger.name_to_value.get('train/entropy_loss', 0),
-            'clip_fraction': self.logger.name_to_value.get('train/clip_fraction', 0),
+                'timesteps': self.num_timesteps,
+                'total_reward': rewards[0],
+                'kl_divergence': self.logger.name_to_value.get('train/approx_kl'),
+                'entropy_loss': self.logger.name_to_value.get('train/entropy_loss'),
+                'clip_fraction': self.logger.name_to_value.get('train/clip_fraction'),
+                'step_reward': info.get('step_reward'),
+                'pipe_changes': info.get('pipe_changes'),
+                'cumulative_pipe_changes': self.cumulative_pipe_changes,
+                'cumulative_budget': info.get('cumulative_budget'),
+                'pressure_deficit': info.get('pressure_deficit'),
+                'demand_satisfaction': info.get('demand_satisfaction'),
+                'cost_of_intervention': info.get('cost_of_intervention'),
+                'simulation_success': info.get('simulation_success'),
+                'weighted_cost': info.get('weighted_cost'),
+                'weighted_pd': info.get('weighted_pd'),
+                'weighted_demand': info.get('weighted_demand'),
+                'action_taken': action_value,
             }
-            
-            # Collect custom metrics from the info dict
-            custom_metrics = [
-                'step_reward', 'pipe_changes', 'cumulative_budget',
-                'pressure_deficit', 'demand_satisfaction', 'cost_of_intervention',
-                'simulation_success', 'weighted_cost', 'weighted_pd', 'weighted_demand'
-            ]
-            for key in custom_metrics:
-                log_entry[key] = info.get(key)
-            
             self.log_data.append(log_entry)
 
-        # Periodically save to disk to avoid data loss
         if self.num_timesteps % 10240 == 0 and self.log_data:
-            df = pd.DataFrame(self.log_data)
-            df.to_csv(self.log_path, mode='a', header=False, index=False)
-            self.log_data = [] # Clear memory
+            self.save_log()
 
         return True
 
+    def save_log(self):
+        """Helper function to save the log data correctly."""
+        if not self.log_data:
+            return
+        # --- KEY CHANGE 3: Create DataFrame with explicit column order ---
+        df = pd.DataFrame(self.log_data, columns=self.log_columns)
+        df.to_csv(self.log_path, mode='a', header=False, index=False)
+        self.log_data = [] # Clear memory after saving
+
     def _on_training_end(self) -> None:
         """Save any remaining data at the end of training."""
-        if self.log_data:
-            df = pd.DataFrame(self.log_data)
-            df.to_csv(self.log_path, mode='a', header=False, index=False)
-            self.log_data = []
+        self.save_log()
 
 # ===================================================================
 # 2. DATA GENERATION HELPERS (for post-training analysis)
@@ -205,8 +220,8 @@ def generate_episode_data_for_viz(model_path: str, env_configs: dict, target_sce
     env = WNTRGymEnv(**single_scenario_configs)
 
     # Load agent
-    agent = GraphPPOAgent(env) # Env is temporary for loading
-    agent.load(model_path, env=env)
+    agent = GraphPPOAgent(env = env, pipes_config = PIPES_CONFIG) # Env is temporary for loading
+    agent.load(model_path)
 
     obs, info = env.reset(options={'scenario_name': target_scenario})
     done = False
@@ -244,7 +259,7 @@ def generate_episode_data_for_viz(model_path: str, env_configs: dict, target_sce
 # 3. PLOTTING FUNCTIONS
 # ===================================================================
 
-def plot_training_diagnostics(log_df: pd.DataFrame, experiment_details: str, roll_window=10):
+def plot_training_diagnostics(log_df: pd.DataFrame, experiment_details: str, roll_window=1000):
     """PLOT 1: Core PPO training metrics over time."""
     fig, axes = plt.subplots(2, 2, figsize=(18, 12), sharex=True)
     fig.suptitle(f"Training Process Diagnostics\n{experiment_details}", fontsize=18, y=0.96)
@@ -271,7 +286,7 @@ def plot_training_diagnostics(log_df: pd.DataFrame, experiment_details: str, rol
     plt.tight_layout(rect=[0, 0, 1, 0.93])
     return fig
 
-def plot_reward_composition(log_df: pd.DataFrame, experiment_details: str, roll_window=10):
+def plot_reward_composition(log_df: pd.DataFrame, experiment_details: str, roll_window=1000):
     """PLOT 2: Decomposes the total reward into its weighted components."""
     fig, axes = plt.subplots(2, 2, figsize=(18, 12), sharex=True)
     fig.suptitle(f"Reward Composition Over Time\n{experiment_details}", fontsize=18, y=0.96)
@@ -373,8 +388,8 @@ def plot_pipe_diameters_heatmap_over_time(
     
     env = WNTRGymEnv(**env_configs)
     # The agent needs an environment to be instantiated, even if it's temporary
-    agent = GraphPPOAgent(env)
-    agent.load(model_path, env=env)
+    agent = GraphPPOAgent(env, pipes_config= PIPES_CONFIG)
+    agent.load(model_path)
     
     # === 2. Run Episode to Collect Data ===
     # Reset the environment specifically to the target scenario
@@ -433,7 +448,7 @@ def plot_pipe_diameters_heatmap_over_time(
     
     # Create a GridSpec to have different sized subplots
     gs = plt.GridSpec(1, 2, width_ratios=[3, 1])
-    fig.patch.set_alpha(0)
+    # fig.patch.set_alpha(0)
     
     # Heatmap on the left (larger)
     ax_heatmap = plt.subplot(gs[0])
@@ -491,7 +506,7 @@ def plot_network_agent_decisions(wn: wntr.network.WaterNetworkModel, upgraded_pi
     ax.legend(handles=legend_elements, loc='upper right', fontsize='large')
     return fig
 
-def plot_action_frequency(log_df: pd.DataFrame, experiment_details: str, roll_window=100):
+def plot_action_frequency(log_df: pd.DataFrame, experiment_details: str, roll_window=1000):
     """PLOT 5: Shows how often each pipe was upgraded during training."""
     action_counts = log_df['pipe_changes'].value_counts().sort_index()
     
@@ -505,7 +520,122 @@ def plot_action_frequency(log_df: pd.DataFrame, experiment_details: str, roll_wi
     plt.tight_layout()
     return fig
 
-def plot_pipe_upgrade_frequency_over_time(log_df: pd.DataFrame, experiment_details: str, window_size=1000):
+def plot_action_type_frequency(log_df: pd.DataFrame, experiment_details: str, window_size=1000):
+    """
+    Creates a plot showing the frequency of each action type over time during training.
+    
+    Args:
+        log_df: DataFrame containing training log data
+        experiment_details: String describing the experiment for plot title
+        window_size: Number of timesteps to aggregate for each data point
+        
+    Returns:
+        matplotlib figure object
+    """
+    # Check if we have action_taken data
+    if 'action_taken' not in log_df.columns:
+        print("Error: 'action_taken' column not found in log data")
+        return None
+    
+    # Create timestep bins
+    max_timestep = log_df['timesteps'].max()
+    bins = np.arange(0, max_timestep + window_size, window_size)
+    
+    # Group data by time windows
+    log_df['time_bin'] = pd.cut(log_df['timesteps'], bins, labels=bins[:-1])
+    
+    # Get unique actions
+    unique_actions = sorted(log_df['action_taken'].unique())
+    
+    # Create the figure
+    fig, ax = plt.subplots(figsize=(15, 8))
+    
+    # Calculate and plot frequency for each action type
+    action_frequencies = {}
+    
+    for action in unique_actions:
+        # Count occurrences of this action in each time bin
+        action_counts = log_df[log_df['action_taken'] == action].groupby('time_bin').size()
+        
+        # Calculate frequency as percentage of all actions in that time bin
+        total_counts = log_df.groupby('time_bin').size()
+        action_freq = (action_counts / total_counts) * 100
+        
+        action_frequencies[action] = action_freq
+        
+        # Plot this action's frequency
+        label = f"Action {action}" if action > 0 else "No Action (0)"
+        ax.plot(action_freq.index.astype(int), action_freq.values, 
+                'o-', linewidth=2, label=label, alpha=0.8)
+    
+    # Add labels and title
+    ax.set_xlabel("Training Timesteps", fontsize=14)
+    ax.set_ylabel("Action Frequency (%)", fontsize=14)
+    ax.set_title(f"Action Type Frequency Over Training Time\n{experiment_details}", fontsize=16)
+    
+    # Add grid and legend
+    ax.grid(True, alpha=0.3)
+    ax.legend(title="Action Types", loc='center left', bbox_to_anchor=(1, 0.5))
+    
+    # Add a horizontal line at 100%
+    ax.axhline(y=100, color='gray', linestyle='--', alpha=0.5)
+    
+    plt.tight_layout()
+    return fig
+
+def plot_cumulative_pipe_changes(log_df: pd.DataFrame, experiment_details: str):
+    """
+    Creates a plot showing the cumulative number of pipe changes over time during training.
+    
+    Args:
+        log_df: DataFrame containing training log data
+        experiment_details: String describing the experiment for plot title
+        
+    Returns:
+        matplotlib figure object
+    """
+    # Check if we have cumulative_pipe_changes data
+    if 'cumulative_pipe_changes' not in log_df.columns:
+        print("Error: 'cumulative_pipe_changes' column not found in log data")
+        return None
+    
+    # Create the figure
+    fig, ax = plt.subplots(figsize=(14, 8))
+    
+    # Plot cumulative pipe changes
+    ax.plot(log_df['timesteps'], log_df['cumulative_pipe_changes'], 
+            '-', linewidth=2, color=PLOT_COLORS[0])
+    
+    # Calculate and plot the rate of change
+    # First, sort by timesteps to ensure correct calculation
+    log_df_sorted = log_df.sort_values('timesteps')
+    
+    # Calculate pipe changes per timestep over a rolling window
+    if len(log_df_sorted) > 100:  # Only if we have enough data
+        window_size = min(1000, len(log_df_sorted) // 10)
+        log_df_sorted['change_rate'] = log_df_sorted['cumulative_pipe_changes'].diff() / log_df_sorted['timesteps'].diff()
+        log_df_sorted['smoothed_rate'] = log_df_sorted['change_rate'].rolling(window=window_size, min_periods=1).mean()
+        
+        # Create a secondary y-axis for the rate
+        ax2 = ax.twinx()
+        ax2.plot(log_df_sorted['timesteps'], log_df_sorted['smoothed_rate'], 
+                '--', linewidth=1.5, color='crimson', alpha=0.7, label='Rate of Change')
+        ax2.set_ylabel('Rate of Pipe Changes per Timestep', color='crimson', fontsize=12)
+        ax2.tick_params(axis='y', labelcolor='crimson')
+    
+    # Add labels and title
+    ax.set_xlabel("Training Timesteps", fontsize=14)
+    ax.set_ylabel("Cumulative Pipe Changes", fontsize=14, color=PLOT_COLORS[0])
+    ax.tick_params(axis='y', labelcolor=PLOT_COLORS[0])
+    ax.set_title(f"Cumulative Pipe Changes Over Training Time\n{experiment_details}", fontsize=16)
+    
+    # Add grid
+    ax.grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    return fig
+
+def plot_pipe_upgrade_frequency_over_time(log_df: pd.DataFrame, experiment_details: str, window_size=10):
     """
     Creates a plot showing the frequency of pipe upgrades over time during training.
     
@@ -632,6 +762,98 @@ def plot_pipe_specific_upgrade_frequency(log_df: pd.DataFrame, episode_df: pd.Da
     plt.tight_layout()
     return fig
 
+# ...existing code...
+
+def plot_episode_stats(log_df: pd.DataFrame, experiment_details: str):
+    """
+    Creates a plot showing episode length and total reward at episode completion over time.
+    
+    Args:
+        log_df: DataFrame containing training log data
+        experiment_details: String describing the experiment for plot title
+        
+    Returns:
+        matplotlib figure object
+    """
+    # We need to identify the end of episodes in the log data
+    # Episodes end when 'pipe_changes' is present and the next step starts a new episode
+    
+    # Make a copy to avoid modifying the original
+    df = log_df.copy()
+    
+    # Sort by timesteps to ensure proper order
+    df = df.sort_values('timesteps')
+    
+    # First identify the last step of each episode (where an episode ends)
+    # This is where 'dones' would be True in the original data
+    episode_ends = []
+    episode_rewards = []
+    episode_lengths = []
+    episode_start_timestep = 0
+    current_episode_reward = 0
+    
+    # Group the data by consecutive 'cumulative_pipe_changes' values
+    # Each time the value changes, it indicates a new pipe was changed
+    df['episode_group'] = (df['cumulative_pipe_changes'].diff() != 0).cumsum()
+    
+    # Find the last row of each episode group
+    episode_ends = df.groupby('episode_group').last().reset_index()
+    
+    # Calculate episode length (in timesteps)
+    episode_ends['episode_length'] = episode_ends['timesteps'].diff().fillna(episode_ends['timesteps'])
+    
+    # Prepare data for plotting
+    timesteps = episode_ends['timesteps'].values
+    episode_lengths = episode_ends['episode_length'].values
+    episode_rewards = episode_ends['step_reward'].values
+    
+    # Create a figure with two y-axes
+    fig, ax1 = plt.subplots(figsize=(15, 8))
+    
+    # First axis: Episode length
+    color = PLOT_COLORS[0]
+    ax1.set_xlabel('Training Timesteps', fontsize=14)
+    ax1.set_ylabel('Episode Length (timesteps)', color=color, fontsize=14)
+    ax1.plot(timesteps, episode_lengths, 'o-', color=color, alpha=0.7, label='Episode Length')
+    ax1.tick_params(axis='y', labelcolor=color)
+    
+    # Second axis: Final episode reward
+    ax2 = ax1.twinx()
+    color = PLOT_COLORS[1]
+    ax2.set_ylabel('Final Episode Reward', color=color, fontsize=14)
+    ax2.plot(timesteps, episode_rewards, 'D--', color=color, alpha=0.7, label='Episode Reward')
+    ax2.tick_params(axis='y', labelcolor=color)
+    
+    # Add trend lines
+    if len(timesteps) > 2:
+        # Episode length trend
+        z1 = np.polyfit(timesteps, episode_lengths, 1)
+        p1 = np.poly1d(z1)
+        ax1.plot(timesteps, p1(timesteps), '-', color=PLOT_COLORS[0], 
+                alpha=0.5, linewidth=1, label=f'Length Trend: {z1[0]:.5f}x + {z1[1]:.1f}')
+        
+        # Episode reward trend
+        z2 = np.polyfit(timesteps, episode_rewards, 1)
+        p2 = np.poly1d(z2)
+        ax2.plot(timesteps, p2(timesteps), '-', color=PLOT_COLORS[1], 
+                alpha=0.5, linewidth=1, label=f'Reward Trend: {z2[0]:.5f}x + {z2[1]:.1f}')
+    
+    # Add legends for both axes
+    lines1, labels1 = ax1.get_legend_handles_labels()
+    lines2, labels2 = ax2.get_legend_handles_labels()
+    ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper center', 
+               bbox_to_anchor=(0.5, -0.15), ncol=2, fontsize=12)
+    
+    # Add title and grid
+    plt.title(f'Episode Length and Final Reward Over Training\n{experiment_details}', fontsize=16)
+    ax1.grid(True, alpha=0.3)
+    
+    # Adjust layout to make room for the legend
+    plt.tight_layout()
+    fig.subplots_adjust(bottom=0.2)
+    
+    return fig
+
 # Test plotting functions with input trainig log data
 # In Plot_Agent2.py, at the end of the file
 
@@ -640,7 +862,8 @@ if __name__ == "__main__":
     
     # Define the scenario and agent you want to test
     target_scenario = 'anytown_sprawling_3'
-    model_path = 'agents/Anytown_Only_20250617_180304.zip' # Make sure this path is correct
+    model_path = 'agents/Anytown_Only_20250618_112509.zip' # Make sure this path is correct
+    training_log = 'training_log.csv' # Path to the training log CSV file
     
     # Define all necessary configs for environment initialization
     env_configs = {
@@ -651,19 +874,61 @@ if __name__ == "__main__":
         'reward_config': REWARD_CONFIG
     }
     
-    save_dir = 'Plots/Test_plotting'
+    # save_dir = 'Plots/Test_plotting'
+
+    # Save dir is the plots directory of the training log
+    save_dir = os.path.join('Plots', os.path.basename(model_path).replace('.zip', ''))
     os.makedirs(save_dir, exist_ok=True)
-    
+
+    # Load the training log data
+    log_path = os.path.join(save_dir, 'training_log.csv')
+    if os.path.exists(log_path):
+        log_df = pd.read_csv(log_path)
+        print(f"Loaded training log with {len(log_df)} entries")
+        
+        # Test the new plotting functions
+        fig1 = plot_action_type_frequency(log_df, model_path)
+        if fig1:
+            fig1.savefig(os.path.join(save_dir, "action_type_frequency.png"))
+            plt.close(fig1)
+            print(f"Saved action type frequency plot")
+        
+        fig2 = plot_cumulative_pipe_changes(log_df, model_path)
+        if fig2:
+            fig2.savefig(os.path.join(save_dir, "cumulative_pipe_changes.png"))
+            plt.close(fig2)
+            print(f"Saved cumulative pipe changes plot")
+            
+        # Test the pipe upgrade frequency plots
+        fig3 = plot_pipe_upgrade_frequency_over_time(log_df, model_path)
+        if fig3:
+            fig3.savefig(os.path.join(save_dir, "pipe_upgrade_frequency.png"))
+            plt.close(fig3)
+            print(f"Saved pipe upgrade frequency plot")
+        
+        # Generate episode data for one representative scenario for pipe-specific plots
+        print(f"Generating episode data for {target_scenario}...")
+        episode_df = generate_episode_data_for_viz(model_path, env_configs, target_scenario)
+        
+        if not episode_df.empty:
+            fig4 = plot_pipe_specific_upgrade_frequency(log_df, episode_df, model_path)
+            if fig4:
+                fig4.savefig(os.path.join(save_dir, "pipe_specific_upgrade_frequency.png"))
+                plt.close(fig4)
+                print(f"Saved pipe-specific upgrade frequency plot")
+    else:
+        print(f"Training log file not found: {log_path}")
+
     # Call the modified heatmap function
-    fig = plot_pipe_diameters_heatmap_over_time(
-        model_path=model_path,
-        pipes_config=env_configs['pipes_config'],
-        scenarios_list=env_configs['scenarios'],
-        target_scenario_name=target_scenario,
-        budget_config=env_configs['budget_config'],
-        reward_config=env_configs['reward_config'],
-        network_config=env_configs['network_config'],
-        save_dir=save_dir
-    )
+    # fig = plot_pipe_diameters_heatmap_over_time(
+    #     model_path=model_path,
+    #     pipes_config=env_configs['pipes_config'],
+    #     scenarios_list=env_configs['scenarios'],
+    #     target_scenario_name=target_scenario,
+    #     budget_config=env_configs['budget_config'],
+    #     reward_config=env_configs['reward_config'],
+    #     network_config=env_configs['network_config'],
+    #     save_dir=save_dir
+    # )
     
-    plt.show() # Display the plot
+    # plt.show() # Display the plot

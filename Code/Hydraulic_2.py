@@ -23,18 +23,18 @@ def run_epanet_simulation(wn: wntr.network.WaterNetworkModel):
     Returns:
         A wntr Results object if the simulation is successful, otherwise None.
     """
-    # try:
-    sim = wntr.sim.EpanetSimulator(wn)
-    results = sim.run_sim()
-    # A basic check for valid results (e.g., at least one timestep of pressure data)
-    if results is None or results.node['pressure'].empty:
-        # print("Warning: Simulation ran but produced no valid results.")
+    try:
+        sim = wntr.sim.EpanetSimulator(wn)
+        results = sim.run_sim()
+        # A basic check for valid results (e.g., at least one timestep of pressure data)
+        if results is None or results.node['pressure'].empty:
+            # print("Warning: Simulation ran but produced no valid results.")
+            return None
+        return results
+    except Exception as e:
+        # Catch potential errors during simulation (e.g., network is disconnected)
+        print(f"Error during EPANET simulation: {e}")
         return None
-    return results
-    # except Exception as e:
-    #     # Catch potential errors during simulation (e.g., network is disconnected)
-    #     print(f"Error during EPANET simulation: {e}")
-    #     return None
 
 def evaluate_network_performance(wn, results, final_time=3600):
     """

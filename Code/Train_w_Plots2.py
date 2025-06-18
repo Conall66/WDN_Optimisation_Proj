@@ -20,17 +20,19 @@ from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv
 # --- Import Project Modules ---
 from PPO_Environment2 import WNTRGymEnv
 from Actor_Critic_Nets3 import GraphPPOAgent
-from Plot_Agent2 import (
-    PlottingCallback, 
-    plot_training_diagnostics, 
-    plot_reward_composition,
-    plot_scenario_performance_comparison,
-    plot_pipe_diameters_heatmap_over_time,
-    calculate_initial_network_rewards,
-    generate_episode_data_for_viz,
-    plot_pipe_upgrade_frequency_over_time,
-    plot_pipe_specific_upgrade_frequency
-)
+# from Plot_Agent2 import (
+#     PlottingCallback, 
+#     plot_training_diagnostics, 
+#     plot_reward_composition,
+#     plot_scenario_performance_comparison,
+#     plot_pipe_diameters_heatmap_over_time,
+#     calculate_initial_network_rewards,
+#     generate_episode_data_for_viz,
+#     plot_pipe_upgrade_frequency_over_time,
+#     plot_pipe_specific_upgrade_frequency
+# )
+
+from Plot_Agent2 import *
 
 # ===================================================================
 # 1. CORE CONFIGURATION PARAMETERS
@@ -73,18 +75,18 @@ REWARD_CONFIG = {
 
 # Budget configurations tailored for different network scales
 BUDGET_CONFIG_HANOI = {
-    "initial_budget_per_step": 1_000_000.0,
-    "start_of_episode_budget": 5_000_000.0,
+    "initial_budget_per_step": 500_000.0,
+    "start_of_episode_budget": 10_000_000.0,
     "ongoing_debt_penalty_factor": 0.0001,
-    "max_debt": 10_000_000.0,
+    "max_debt": 1_000_000.0,
     "labour_cost_per_meter": 100.0
 }
     
 BUDGET_CONFIG_ANYTOWN = {
-    "initial_budget_per_step": 2_000_000.0,
-    "start_of_episode_budget": 5_000_000.0,
+    "initial_budget_per_step": 1_000_000.0,
+    "start_of_episode_budget": 20_000_000.0,
     "ongoing_debt_penalty_factor": 0.0001,
-    "max_debt": 10_000_000.0,
+    "max_debt": 1_000_000.0,
     "labour_cost_per_meter": 100.0
 }
 
@@ -119,35 +121,39 @@ def evaluate_policy(model_path: str, eval_env_configs: dict, num_episodes: int =
     for scenario in eval_env_configs['scenarios']:
         print(f"  - Evaluating scenario: {scenario}")
         
-        # Create scenario-specific configs
         scenario_configs = eval_env_configs.copy()
-        scenario_configs['scenarios'] = [scenario]  # Only use this specific scenario
+        scenario_configs['scenarios'] = [scenario]
         
-        # Create DummyVecEnv for this scenario
         vec_env = DummyVecEnv([lambda: WNTRGymEnv(**scenario_configs)])
         
-        # Load the agent with the vectorized environment
         agent = None
         if not is_random:
+            # The environment passed during agent creation is temporary; it gets replaced by vec_env when loading.
             agent = GraphPPOAgent(vec_env, pipes_config=PIPES_CONFIG, **PPO_CONFIG)
-            agent.load(model_path, env=vec_env)
+            agent.load(model_path, env=vec_env) # Pass the vec_env here to link them
         
         episode_rewards = []
         for _ in range(num_episodes):
-            obs = vec_env.reset()  # Vector env reset returns just observations
+            obs = vec_env.reset()
             total_reward = 0
             done = False
             
             while not done:
                 if is_random:
-                    action = [vec_env.action_space.sample()]  # Need list of actions for vec_env
+                    action = [vec_env.action_space.sample()]
                 else:
-                    action, _ = agent.predict(obs, deterministic=True)
+                    # --- KEY CHANGE START ---
+                    # 1. Get the action mask from the vectorized environment
+                    # env_method returns a list, so we get the first element for our single env.
+                    action_masks = vec_env.env_method('action_masks')[0]
+                    
+                    # 2. Pass the mask to the predict function
+                    action, _ = agent.predict(obs, deterministic=True, action_masks=action_masks)
+                    # --- KEY CHANGE END ---
                 
-                # Step in vec_env returns (obs, rewards, dones, infos)
                 obs, rewards, dones, infos = vec_env.step(action)
-                reward = rewards[0]  # Get the first reward (only one env)
-                done = dones[0]      # Get the first done flag
+                reward = rewards[0]
+                done = dones[0]
                 
                 total_reward += reward
             
@@ -206,7 +212,7 @@ def run_training_experiment(
     agent = GraphPPOAgent(vec_env, pipes_config= PIPES_CONFIG, **PPO_CONFIG)
     if pre_trained_model:
         print(f"Loading pre-trained model from: {pre_trained_model}")
-        agent.load(pre_trained_model, env=vec_env)
+        agent.load(pre_trained_model)
 
     # --- 3. Train the Agent with Logging Callback ---
     print(f"Training for {total_timesteps} timesteps...")
@@ -228,11 +234,13 @@ def run_training_experiment(
     log_df = pd.read_csv(log_path)
 
     # Evaluate DRL, Random, and No-Action policies
-    drl_results = evaluate_policy(model_path, env_configs, num_episodes=3)
-    random_results = evaluate_policy(model_path, env_configs, num_episodes=3, is_random=True)
+    drl_results = evaluate_policy(model_path, env_configs, num_episodes=1)
+    random_results = evaluate_policy(model_path, env_configs, num_episodes=1, is_random=True)
     initial_rewards = calculate_initial_network_rewards(env_configs)
     
     # Generate and save plots
+    print("Generating plots...")
+
     try:
         fig1 = plot_training_diagnostics(log_df, model_id)
         fig1.savefig(os.path.join(plots_dir, "plot_1_training_diagnostics.png")); plt.close(fig1)
@@ -246,20 +254,49 @@ def run_training_experiment(
         fig3.savefig(os.path.join(plots_dir, "plot_3_scenario_performance.png")); plt.close(fig3)
         plt.show()
         
-        # Generate heatmap for the last scenario in the list as a representative example
+        # Generate episode data for one representative scenario
         rep_scenario = scenarios[-1]
+        print(f"Generating episode data for {rep_scenario}...")
         episode_df = generate_episode_data_for_viz(model_path, env_configs, rep_scenario)
+
+        try:
+            print(f"Generating pipe diameter heatmap for {rep_scenario}...")
+            fig4 = plot_pipe_diameters_heatmap_over_time(
+                model_path=model_path,
+                pipes_config=env_configs['pipes_config'],
+                scenarios_list=scenarios,
+                target_scenario_name=rep_scenario,
+                budget_config=budget_config,
+                reward_config=env_configs['reward_config'],
+                network_config=env_configs['network_config'],
+                save_dir=plots_dir
+            )
+            fig4.savefig(os.path.join(plots_dir, "plot_4_pipe_diameters_heatmap.png")); plt.close(fig4)
+            plt.show()
+        except Exception as e:
+            print(f"Error generating pipe diameter heatmap: {e}")
 
         fig5 = plot_pipe_upgrade_frequency_over_time(log_df, model_id, window_size=500)
         fig5.savefig(os.path.join(plots_dir, "plot_5_pipe_upgrade_frequency.png")); plt.close(fig5)
         plt.show()
         
-        # Generate specific pipe upgrade frequency plot
         fig6 = plot_pipe_specific_upgrade_frequency(log_df, episode_df, model_id)
         fig6.savefig(os.path.join(plots_dir, "plot_6_specific_pipe_upgrades.png")); plt.close(fig6)
         plt.show()
 
-        print(f"All plots saved to directory: {plots_dir}")
+        fig7 = plot_action_type_frequency(log_df, model_id)
+        fig7.savefig(os.path.join(plots_dir, "plot_7_action_type_frequency.png")); plt.close(fig7)
+        plt.show()
+
+        fig8 = plot_cumulative_pipe_changes(log_df, model_id)
+        fig8.savefig(os.path.join(plots_dir, "plot_8_cumulative_pipe_changes.png")); plt.close(fig8)
+        plt.show()
+
+        # Add the new episode stats plot
+        fig9 = plot_episode_stats(log_df, model_id)
+        fig9.savefig(os.path.join(plots_dir, "plot_9_episode_stats.png")); plt.close(fig9)
+        plt.show()
+
     except Exception as e:
         print(f"An error occurred during plotting: {e}")
 
@@ -268,11 +305,131 @@ def run_training_experiment(
     print("="*80)
     return model_path
 
+def test_evaluation_and_plotting(model_path, scenarios, budget_config):
+    """
+    Test just the evaluation and plotting parts of the training workflow using the existing training log.
+    
+    Args:
+        model_path: Path to the trained model (without .zip extension)
+        scenarios: List of scenarios to evaluate on
+        budget_config: Budget configuration dictionary
+    """
+    print("\n" + "="*80)
+    print(f"### TESTING EVALUATION AND PLOTTING FOR: {model_path} ###")
+    print("="*80)
+    
+    # Extract model_id from the model path
+    model_id = os.path.basename(model_path)
+    
+    # Define directories
+    plots_dir = os.path.join("Plots", model_id)
+    os.makedirs(plots_dir, exist_ok=True)
+    
+    # Environment configs
+    env_configs = {
+        'pipes_config': PIPES_CONFIG, 'scenarios': scenarios,
+        'network_config': NETWORK_CONFIG, 'budget_config': budget_config,
+        'reward_config': REWARD_CONFIG
+    }
+    
+    # 5. Evaluate and Generate Plots
+    print("\n--- Evaluation and Plot Generation ---")
+    
+    # Check if training log exists
+    log_path = os.path.join(plots_dir, "training_log.csv")
+    if not os.path.exists(log_path):
+        print(f"Error: Training log not found at {log_path}")
+        print("Please make sure your model path is correct and the training log exists.")
+        return
+    
+    # Load the existing training log
+    log_df = pd.read_csv(log_path)
+    print(f"Successfully loaded training log with {len(log_df)} entries.")
+
+    # Evaluate DRL, Random, and No-Action policies
+    print("Evaluating trained agent...")
+    drl_results = evaluate_policy(model_path, env_configs, num_episodes=1)
+    print("Evaluating random policy...")
+    random_results = evaluate_policy(model_path, env_configs, num_episodes=1, is_random=True)
+    print("Calculating initial network rewards...")
+    initial_rewards = calculate_initial_network_rewards(env_configs)
+    
+    # Generate and save plots
+    try:
+        print("Generating plots...")
+        
+        fig1 = plot_training_diagnostics(log_df, model_id)
+        fig1.savefig(os.path.join(plots_dir, "plot_1_training_diagnostics.png")); plt.close(fig1)
+        plt.show()
+
+        fig2 = plot_reward_composition(log_df, model_id)
+        fig2.savefig(os.path.join(plots_dir, "plot_2_reward_composition.png")); plt.close(fig2)
+        plt.show()
+
+        fig3 = plot_scenario_performance_comparison(drl_results, random_results, initial_rewards, model_id)
+        fig3.savefig(os.path.join(plots_dir, "plot_3_scenario_performance.png")); plt.close(fig3)
+        plt.show()
+        
+        # Generate episode data for one representative scenario
+        rep_scenario = scenarios[-1]
+        print(f"Generating episode data for {rep_scenario}...")
+        episode_df = generate_episode_data_for_viz(model_path, env_configs, rep_scenario)
+
+        try:
+            print(f"Generating pipe diameter heatmap for {rep_scenario}...")
+            fig4 = plot_pipe_diameters_heatmap_over_time(
+                model_path=model_path,
+                pipes_config=env_configs['pipes_config'],
+                scenarios_list=scenarios,
+                target_scenario_name=rep_scenario,
+                budget_config=budget_config,
+                reward_config=env_configs['reward_config'],
+                network_config=env_configs['network_config'],
+                save_dir=plots_dir
+            )
+            fig4.savefig(os.path.join(plots_dir, "plot_4_pipe_diameters_heatmap.png")); plt.close(fig4)
+            plt.show()
+        except Exception as e:
+            print(f"Error generating pipe diameter heatmap: {e}")
+
+        fig5 = plot_pipe_upgrade_frequency_over_time(log_df, model_id, window_size=500)
+        fig5.savefig(os.path.join(plots_dir, "plot_5_pipe_upgrade_frequency.png")); plt.close(fig5)
+        plt.show()
+        
+        fig6 = plot_pipe_specific_upgrade_frequency(log_df, episode_df, model_id)
+        fig6.savefig(os.path.join(plots_dir, "plot_6_specific_pipe_upgrades.png")); plt.close(fig6)
+        plt.show()
+
+        fig7 = plot_action_type_frequency(log_df, model_id)
+        fig7.savefig(os.path.join(plots_dir, "plot_7_action_type_frequency.png")); plt.close(fig7)
+        plt.show()
+
+        fig8 = plot_cumulative_pipe_changes(log_df, model_id)
+        fig8.savefig(os.path.join(plots_dir, "plot_8_cumulative_pipe_changes.png")); plt.close(fig8)
+        plt.show()
+
+        # Add the new episode stats plot
+        fig9 = plot_episode_stats(log_df, model_id)
+        fig9.savefig(os.path.join(plots_dir, "plot_9_episode_stats.png")); plt.close(fig9)
+        plt.show()
+
+        print(f"All plots saved to directory: {plots_dir}")
+    except Exception as e:
+        print(f"An error occurred during plotting: {e}")
+        import traceback
+        traceback.print_exc()
+
+    print("\n" + "="*80)
+    print(f"### TESTING COMPLETE ###")
+    print("="*80)
+
 # ===================================================================
 # 4. SCRIPT EXECUTION
 # ===================================================================
 
 if __name__ == "__main__":
+
+    
     # This is crucial for SubprocVecEnv on Windows and macOS
     mp.freeze_support()
 
@@ -280,13 +437,21 @@ if __name__ == "__main__":
     anytown_scenarios = [s for s in ALL_SCENARIOS if 'anytown' in s]
     hanoi_scenarios = [s for s in ALL_SCENARIOS if 'hanoi' in s]
 
+    # trained_model_path = "agents/Anytown_Only_20250618_063339"  
+    
+    # # Define which scenarios to evaluate on
+    # test_scenarios = anytown_scenarios  # or hanoi_scenarios or ALL_SCENARIOS
+    
+    # # Test just the evaluation and plotting parts
+    # test_evaluation_and_plotting(trained_model_path, test_scenarios, BUDGET_CONFIG_ANYTOWN)
+
     # --- Run Experiment 1: Train on Hanoi network ---
     # Hanoi is smaller and trains faster, good for a first run.
     # hanoi_model_path = run_training_experiment(
     #     training_label="Hanoi_Only",
     #     scenarios=hanoi_scenarios,
     #     budget_config=BUDGET_CONFIG_HANOI,
-    #     total_timesteps=5_000,
+    #     total_timesteps=50_000,
     #     use_subproc_env=False
     # )
 
@@ -296,7 +461,7 @@ if __name__ == "__main__":
         training_label="Anytown_Only",
         scenarios=anytown_scenarios,
         budget_config=BUDGET_CONFIG_ANYTOWN,
-        total_timesteps=5_000,
+        total_timesteps=50_000,
         use_subproc_env=False
     )
     

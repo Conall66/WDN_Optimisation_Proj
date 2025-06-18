@@ -344,23 +344,23 @@ class GNNActorCriticPolicy(ActorCriticPolicy):
             **kwargs
         )
 
-# class MaskableGNNActorCriticPolicy(MaskACP): # Inherit from MaskableActorCriticPolicy
-#     """
-#     Custom Maskable ActorCriticPolicy using GNN feature extraction.
-#     """
-#     def __init__(self, observation_space, action_space, lr_schedule, pipes_config, **kwargs):
+class MaskableGNNActorCriticPolicy(MaskACP): # Inherit from MaskableActorCriticPolicy
+    """
+    Custom Maskable ActorCriticPolicy using GNN feature extraction.
+    """
+    def __init__(self, observation_space, action_space, lr_schedule, pipes_config, **kwargs):
 
-#         kwargs.pop("use_sde", None)  # Remove use_sde as it's not supported by MaskableActorCriticPolicy
+        kwargs.pop("use_sde", None)  # Remove use_sde as it's not supported by MaskableActorCriticPolicy
 
-#         # Note: pipes_config is passed to features_extractor_kwargs
-#         super().__init__( # Call MaskableActorCriticPolicy's __init__
-#             observation_space,
-#             action_space,
-#             lr_schedule,
-#             features_extractor_class=GNNFeatureExtractor, # Your GNNFeatureExtractor
-#             features_extractor_kwargs={"pipes_config": pipes_config},
-#             **kwargs
-#         )
+        # Note: pipes_config is passed to features_extractor_kwargs
+        super().__init__( # Call MaskableActorCriticPolicy's __init__
+            observation_space,
+            action_space,
+            lr_schedule,
+            features_extractor_class=GNNFeatureExtractor, # Your GNNFeatureExtractor
+            features_extractor_kwargs={"pipes_config": pipes_config},
+            **kwargs
+        )
 
 class GraphPPOAgent:
     def __init__(self, env, pipes_config: Dict, **ppo_kwargs):
@@ -391,8 +391,15 @@ class GraphPPOAgent:
         # policy_kwargs for the policy's constructor
         policy_kwargs_for_agent = {"pipes_config": pipes_config}
 
-        self.agent = PPO(
-            GNNActorCriticPolicy,  # Use your GNN-based policy
+        # self.agent = PPO(
+        #     GNNActorCriticPolicy,  # Use your GNN-based policy
+        #     env,
+        #     policy_kwargs=policy_kwargs_for_agent,
+        #     **default_ppo_kwargs
+        # )
+
+        self.agent = MaskablePPO(
+            MaskableGNNActorCriticPolicy,  # Use your GNN-based policy
             env,
             policy_kwargs=policy_kwargs_for_agent,
             **default_ppo_kwargs
@@ -404,7 +411,9 @@ class GraphPPOAgent:
     
     def predict(self, observation, deterministic: bool = True):
         """Make prediction"""
-        return self.agent.predict(observation, deterministic=deterministic)
+        action = self.agent.predict(observation, deterministic=deterministic)
+        # print(f"Predicted action: {action}")
+        return action
     
     def save(self, path: str):
         """Save the trained model"""

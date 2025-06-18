@@ -92,6 +92,52 @@ def _reward_custom_normalized(params: Dict[str, Any]) -> tuple[float, dict]:
     }
     return final_reward, components
 
+def _reward_return_on_investment(params: Dict[str, Any]) -> tuple[float, dict]:
+    """
+    REWARD STRATEGY: A reward based on the return on investment (ROI).
+    Reward = (Hydraulic Improvement) / (Normalized Cost)
+    """
+    metrics = params['metrics']
+    cost_of_intervention = params.get('cost_of_intervention', 0.0)
+    baseline_pd = params.get('baseline_pressure_deficit', 1.0) # Avoid division by zero
+    max_cost = params.get('max_cost_normalization', 1.0)
+    
+    # --- Calculate Hydraulic Improvement ---
+    current_pd = metrics.get('total_pressure_deficit', baseline_pd)
+    pd_improvement = (baseline_pd - current_pd) / baseline_pd if baseline_pd > 0 else 0.0
+    pd_improvement = max(0, pd_improvement) # Improvement cannot be negative
+
+    # --- Calculate Normalized Cost ---
+    # Add a small epsilon to avoid division by zero if cost is 0
+    normalized_cost = cost_of_intervention / max_cost + 1e-6 
+
+    # --- Calculate ROI-based Reward ---
+    # The core of the reward is how much hydraulic improvement you got for the cost paid
+    if cost_of_intervention > 0:
+        # We can add a factor to scale the reward. Here, 0.5 is a tuning parameter.
+        reward = 0.5 * (pd_improvement / normalized_cost)
+    else:
+        # If no action was taken, reward is based on maintaining the status quo.
+        # A small reward for not spending, but only if the system is already good.
+        reward = 0.1 if current_pd <= 0 else 0.0
+
+    # --- Budget Penalty ---
+    # Make the penalty for going into debt much harsher
+    budget_after_intervention = params.get('current_budget', float('inf')) - cost_of_intervention
+    if budget_after_intervention < 0:
+        reward -= 0.5 # A large, constant negative penalty
+
+    # Final clamp to keep reward in a reasonable range (e.g., [-1, 1])
+    final_reward = max(-1.0, min(1.0, reward))
+
+    components = {
+        'hydraulic_improvement': pd_improvement,
+        'normalized_cost': normalized_cost,
+        'roi_reward': reward,
+        'budget_penalty_applied': budget_after_intervention < 0
+    }
+    return final_reward, components
+
 # ===================================================================
 # 2. PUBLIC API FUNCTIONS (Call these from the environment)
 # ===================================================================
@@ -141,7 +187,7 @@ def compute_total_cost(
             print(f"Warning: Pipe ID '{pipe_id}' from actions not found in the current network model. Skipping cost calculation for it.")
 
     total_cost = pipe_upgrade_cost + total_labour_cost + energy_cost
-    return total_cost
+    return total_cost, energy_cost, total_labour_cost, pipe_upgrade_cost
 
 # ==================================
 # 3. TEST FUNCTIONS (For unit testing)

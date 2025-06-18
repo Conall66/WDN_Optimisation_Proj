@@ -39,18 +39,18 @@ def test_upgrade_strategies(network_name='hanoi'):
     
     # Budget configurations
     BUDGET_CONFIG_HANOI = {
-        "initial_budget_per_step": 1_000_000.0,
-        "start_of_episode_budget": 5_000_000.0,
+        "initial_budget_per_step": 500_000.0,
+        "start_of_episode_budget": 10_000_000.0,
         "ongoing_debt_penalty_factor": 0.0001,
-        "max_debt": 10_000_000.0,
+        "max_debt": 30_000_000.0,
         "labour_cost_per_meter": 100.0
     }
-    
+        
     BUDGET_CONFIG_ANYTOWN = {
-        "initial_budget_per_step": 2_000_000.0,
-        "start_of_episode_budget": 5_000_000.0,
+        "initial_budget_per_step": 1_00_000.0,
+        "start_of_episode_budget": 20_000_000.0,
         "ongoing_debt_penalty_factor": 0.0001,
-        "max_debt": 10_000_000.0,
+        "max_debt": 50_000_000.0,
         "labour_cost_per_meter": 100.0
     }
     
@@ -125,13 +125,15 @@ def test_upgrade_strategies(network_name='hanoi'):
     metrics = evaluate_network_performance(wn_all_at_once, sim_results)
     
     # Calculate cost
-    total_cost = compute_total_cost(
+    total_cost, _, _, _ = compute_total_cost(
         actions=actions,
         pipes_config=PIPES_CONFIG,
         wn=wn_all_at_once,
         energy_cost=0.0,
         labour_cost_per_meter=budget_config['labour_cost_per_meter']
     )
+
+    print(f"Total cost for upgrading all pipes: ${total_cost}")
     
     # Calculate reward
     params = {
@@ -189,7 +191,7 @@ def test_upgrade_strategies(network_name='hanoi'):
     for step, (pipe_id, length) in enumerate(sorted_pipes, 1):
         # Calculate cost to upgrade this pipe
         pipe_action = [(pipe_id, target_diameter)]
-        pipe_cost = compute_total_cost(
+        pipe_cost, _, _, _ = compute_total_cost(
             actions=pipe_action,
             pipes_config=PIPES_CONFIG,
             wn=wn_incremental,

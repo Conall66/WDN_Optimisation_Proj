@@ -149,13 +149,15 @@ class WNTRGymEnv(gym.Env):
         results, metrics, sim_success = self._simulate_network(self.current_network)
 
         actions_for_cost = [action_tuple] if action_tuple else []
-        cost_of_intervention = compute_total_cost(
+        cost_of_intervention, energy_cost, labout_cost, material_cost = compute_total_cost(
             actions=actions_for_cost,
             pipes_config=self.pipes_config,
             wn=self.current_network,
             energy_cost=metrics.get('total_pump_cost', 0) if sim_success else float('inf'),
             labour_cost_per_meter=self.labour_cost
         )
+
+        # print(f"Action taken: {action}, Cost of intervention: {cost_of_intervention:.2f}, Energy cost: {energy_cost:.2f}, Labour cost: {labout_cost:.2f}, Material cost: {material_cost:.2f}")
         
         # Prepare parameters for the NEW reward function, including baselines
         reward_params = {
@@ -166,6 +168,8 @@ class WNTRGymEnv(gym.Env):
             'current_budget': self.cumulative_budget,  # Pass current budget before deduction
             **self.reward_config 
         }
+
+        # print(f"Reward parameters: {reward_params}")
 
         if sim_success:
             # Get the reward (now including budget penalty)
@@ -178,7 +182,7 @@ class WNTRGymEnv(gym.Env):
             
             # Truncate if debt becomes excessive
             if self.cumulative_budget < -self.max_debt:
-                # truncated = True
+                truncated = True
                 reward = 0.0  # Also ensure reward is zero on final truncation step
 
             info = {
@@ -215,12 +219,59 @@ class WNTRGymEnv(gym.Env):
                     self.cumulative_budget += self.initial_budget_per_step
                     self._load_network_for_timestep()
 
-        print(f"Step {self.current_time_step}, Pipe {self.current_pipe_index}, Action: {action}, Reward: {reward}, Budget: {self.cumulative_budget:.2f}")
-        print(f"Reward Components: {reward_components}")
+        print(f"Step {self.current_time_step}, Pipe {self.current_pipe_index}, Action: {action}, Reward: {reward}, Budget: {self.cumulative_budget:.2f}, Cost of Intervention: {cost_of_intervention:.2f}")
+        # print(f"Reward Components: {reward_components}")
         print("=" * 50)
 
         obs = self._get_network_features()
         return obs, reward, terminated, truncated, info
+    
+    def action_masks(self) -> list[bool]:
+        """
+        Returns a list of booleans specifying whether each action is valid.
+        An action is now considered valid only if:
+        1. It's the "do nothing" action.
+        2. It's a SIGNIFICANT upgrade (e.g., at least a 5% increase in diameter).
+        3. The agent can afford the intervention.
+        """
+        mask = [True] * self.action_space.n  # Start with all actions as possible
+        current_pipe_name = self.pipe_names[self.current_pipe_index]
+        pipe = self.current_network.get_link(current_pipe_name)
+        current_diameter = pipe.diameter
+
+        # Define a threshold for what constitutes a meaningful upgrade
+        SIGNIFICANT_UPGRADE_FACTOR = 1.05  # 5% increase
+
+        for i, new_diameter in enumerate(self.pipe_diameter_options):
+            action_index = i + 1
+
+            # Condition 1: Is it a significant upgrade?
+            is_significant_upgrade = (new_diameter > current_diameter * SIGNIFICANT_UPGRADE_FACTOR)
+
+            if not is_significant_upgrade:
+                mask[action_index] = False
+                continue  # No need to check affordability if it's not a good upgrade
+
+            # Condition 2: Can the agent afford it?
+            # Estimate the cost of this single action
+            cost, _, _, _ = compute_total_cost(
+                actions=[(current_pipe_name, new_diameter)],
+                pipes_config=self.pipes_config,
+                wn=self.current_network,
+                energy_cost=0,  # Ignore energy cost for this quick check
+                labour_cost_per_meter=self.labour_cost
+            )
+            
+            # We can allow the agent to go into debt, but not beyond the max_debt
+            if self.cumulative_budget - cost < -self.max_debt:
+                mask[action_index] = False
+        
+        # If no upgrade is possible, the only valid action is 0 ("do nothing")
+        if all(m is False for m in mask[1:]):
+            # This isn't strictly necessary as the loop handles it, but it's a good safeguard
+            pass
+
+        return mask
 
     def _get_network_features(self) -> Dict[str, np.ndarray]:
         # This function does not need changes
