@@ -15,7 +15,7 @@ from typing import Dict, List, Tuple, Optional
 
 # Import reward functions and hydraulic model helpers
 from Hydraulic_2 import run_epanet_simulation, evaluate_network_performance
-from Reward2 import calculate_reward, compute_total_cost
+from Reward2 import calculate_reward, compute_total_cost, _reward_custom_normalized
 
 class WNTRGymEnv(gym.Env):
     metadata = {'render_modes': ['human']}
@@ -70,6 +70,8 @@ class WNTRGymEnv(gym.Env):
         self.chosen_diameters_from_previous_step = {}
         self.chosen_roughness_from_previous_step = {}
         self.cumulative_budget = 0.0
+
+        self.actions_this_timestep = []
         
         # NEW: Baseline metrics for reward normalization, set at the start of each episode
         self.baseline_pressure_deficit = 0.0
@@ -106,6 +108,8 @@ class WNTRGymEnv(gym.Env):
         self.chosen_diameters_from_previous_step = {}
         self.chosen_roughness_from_previous_step = {}
 
+        self.actions_this_timestep = []
+
         # Load the initial network state for t=0
         self._load_network_for_timestep()
         self.cumulative_budget += self.initial_budget_per_step # Add budget for the first period
@@ -139,6 +143,7 @@ class WNTRGymEnv(gym.Env):
                 self.current_network.get_link(pipe_name).diameter = new_diameter
                 self.current_network.get_link(pipe_name).roughness = 150.0 
                 action_tuple = (pipe_name, new_diameter)
+                self.actions_this_timestep.append(action_tuple)
 
         # Run simulation and get metrics
         results, metrics, sim_success = self._simulate_network(self.current_network)
@@ -164,7 +169,8 @@ class WNTRGymEnv(gym.Env):
 
         if sim_success:
             # Get the reward (now including budget penalty)
-            reward, reward_components = calculate_reward(mode=self.reward_mode, params=reward_params)
+            # reward, reward_components = calculate_reward(mode=self.reward_mode, params=reward_params)
+            reward, reward_components = _reward_custom_normalized(params=reward_params)
             
             # Update budget (but don't apply penalty here anymore)
             budget_before_spending = self.cumulative_budget
@@ -172,7 +178,7 @@ class WNTRGymEnv(gym.Env):
             
             # Truncate if debt becomes excessive
             if self.cumulative_budget < -self.max_debt:
-                truncated = True
+                # truncated = True
                 reward = 0.0  # Also ensure reward is zero on final truncation step
 
             info = {
@@ -199,6 +205,8 @@ class WNTRGymEnv(gym.Env):
                 self.chosen_diameters_from_previous_step = {p: self.current_network.get_link(p).diameter for p in self.pipe_names}
                 self.chosen_roughness_from_previous_step = {p: self.current_network.get_link(p).roughness for p in self.pipe_names}
                 self.current_time_step += 1
+
+                self.actions_this_timestep = []  # Reset actions for the next timestep
                 
                 if self.current_time_step >= self.num_time_steps:
                     terminated = True
@@ -206,6 +214,10 @@ class WNTRGymEnv(gym.Env):
                     self.current_pipe_index = 0
                     self.cumulative_budget += self.initial_budget_per_step
                     self._load_network_for_timestep()
+
+        print(f"Step {self.current_time_step}, Pipe {self.current_pipe_index}, Action: {action}, Reward: {reward}, Budget: {self.cumulative_budget:.2f}")
+        print(f"Reward Components: {reward_components}")
+        print("=" * 50)
 
         obs = self._get_network_features()
         return obs, reward, terminated, truncated, info
@@ -279,11 +291,11 @@ class WNTRGymEnv(gym.Env):
     
         results, _, _ = self._simulate_network(self.current_network)
         if results:
-            print(f"Simulation successful for timestep {self.current_time_step}.")
+            # print(f"Simulation successful for timestep {self.current_time_step}.")
             pressures = results.node['pressure']
             self.node_pressures = {node_name: pressures.loc[:, node_name].mean() for node_name in self.node_names if node_name in pressures.columns}
         else:
-            print(f"Simulation failed for timestep {self.current_time_step}. Setting all node pressures to 0.")
+            # print(f"Simulation failed for timestep {self.current_time_step}. Setting all node pressures to 0.")
             self.node_pressures = {node_name: 0.0 for node_name in self.node_names}
 
     def _get_initial_metrics(self):
@@ -298,6 +310,7 @@ class WNTRGymEnv(gym.Env):
             if results is None or results.node['pressure'].isnull().values.any():
                 return None, {}, False
             metrics = evaluate_network_performance(network, results)
+            # print(f"Simulation completed for scenario '{self.current_scenario}' at time step {self.current_time_step}.")
             return results, metrics, True
         except Exception:
             return None, {}, False

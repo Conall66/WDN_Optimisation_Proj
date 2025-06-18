@@ -382,20 +382,6 @@ def test_upgrade_strategies(network_name='hanoi'):
 
 if __name__ == "__main__":
 
-    # Create a temporary directory for plots
-    temp_dir = tempfile.mkdtemp()
-    os.makedirs(os.path.join(temp_dir, 'Plots'), exist_ok=True)
-    
-    try:
-        # Run tests for both networks
-        hanoi_results = test_upgrade_strategies('hanoi')
-        anytown_results = test_upgrade_strategies('anytown')
-        
-        # Save results to CSV files
-        hanoi_results.to_csv(os.path.join(temp_dir, 'hanoi_upgrade_strategies.csv'), index=False)
-        anytown_results.to_csv(os.path.join(temp_dir, 'anytown_upgrade_strategies.csv'), index=False)
-        
-        print(f"\nResults saved to {temp_dir}")
-    finally:
-        # Clean up temporary directory
-        shutil.rmtree(temp_dir)
+    # Run tests for both networks
+    hanoi_results = test_upgrade_strategies('hanoi')
+    anytown_results = test_upgrade_strategies('anytown')

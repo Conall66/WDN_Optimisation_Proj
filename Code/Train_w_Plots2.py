@@ -68,7 +68,7 @@ NETWORK_CONFIG = {
 
 REWARD_CONFIG = {
     'mode': 'custom_normalized',
-    'max_cost_normalization': 10_000_000.0 # Still used for cost normalization
+    'max_cost_normalization': 1_000_000.0 # COST IS NORMALISED AGAINST SINGLE ACTION
 }
 
 # Budget configurations tailored for different network scales
@@ -129,7 +129,7 @@ def evaluate_policy(model_path: str, eval_env_configs: dict, num_episodes: int =
         # Load the agent with the vectorized environment
         agent = None
         if not is_random:
-            agent = GraphPPOAgent(vec_env)
+            agent = GraphPPOAgent(vec_env, pipes_config=PIPES_CONFIG, **PPO_CONFIG)
             agent.load(model_path, env=vec_env)
         
         episode_rewards = []
@@ -203,7 +203,7 @@ def run_training_experiment(
         vec_env = DummyVecEnv([lambda: WNTRGymEnv(**env_configs)])
 
     # --- 2. Create or Load the Agent ---
-    agent = GraphPPOAgent(vec_env, **PPO_CONFIG)
+    agent = GraphPPOAgent(vec_env, pipes_config= PIPES_CONFIG, **PPO_CONFIG)
     if pre_trained_model:
         print(f"Loading pre-trained model from: {pre_trained_model}")
         agent.load(pre_trained_model, env=vec_env)
