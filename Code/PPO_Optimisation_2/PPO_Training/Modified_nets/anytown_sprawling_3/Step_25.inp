@@ -7,8 +7,12 @@
 ; WNTR: 1.3.2
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
 ; Created: 2025-06-03 23:46:58
 >>>>>>> parent of 3ae9910 (Lil bit file management):Code/PPO_Optimisation_2/PPO_Training/Modified_nets/anytown_sprawling_3/Step_25.inp
+=======
+; Created: 2025-06-18 02:46:55
+>>>>>>> Stashed changes
 =======
 ; Created: 2025-06-18 02:46:55
 >>>>>>> Stashed changes
@@ -20,6 +24,7 @@ ANYTOWN example
 
 [JUNCTIONS]
 ;ID                      Elevation       Demand Pattern                 
+<<<<<<< Updated upstream
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
 <<<<<<< HEAD:Code/temp.inp
@@ -73,6 +78,8 @@ ANYTOWN example
 =======
 =======
 >>>>>>> Stashed changes
+=======
+>>>>>>> Stashed changes
  1                              6.096    168.67176878 1                          ;
  2                              15.24    100.53435667 1                          ;
  3                              15.24    100.53435667 1                          ;
@@ -97,6 +104,9 @@ ANYTOWN example
  22                            36.576    55.109415261 1                          ;
  26                             39.33    28.607896396 1                          ;
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
 =======
 >>>>>>> Stashed changes
