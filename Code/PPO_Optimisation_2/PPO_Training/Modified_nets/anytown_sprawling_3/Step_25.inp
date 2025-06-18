@@ -1,11 +1,85 @@
+<<<<<<< HEAD:Code/temp.inp
+; Filename: Networks2\anytown_sprawling_2\Step_1.inp
+; WNTR: 1.3.2
+; Created: 2025-06-18 00:42:35
+=======
 ; Filename: c:\Users\conal\OneDrive - Imperial College London\Imperial\Masters Project\Git_Sync\WDN_Optimisation_Proj\Code\PPO_Optimisation_2\PPO_Training\Modified_nets\anytown-3.inp
 ; WNTR: 1.3.2
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
+; Created: 2025-06-03 23:46:58
+>>>>>>> parent of 3ae9910 (Lil bit file management):Code/PPO_Optimisation_2/PPO_Training/Modified_nets/anytown_sprawling_3/Step_25.inp
+=======
 ; Created: 2025-06-18 02:46:55
+>>>>>>> Stashed changes
+=======
+; Created: 2025-06-18 02:46:55
+>>>>>>> Stashed changes
+=======
+; Created: 2025-06-18 02:46:55
+>>>>>>> Stashed changes
 [TITLE]
 ANYTOWN example
 
 [JUNCTIONS]
 ;ID                      Elevation       Demand Pattern                 
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
+<<<<<<< HEAD:Code/temp.inp
+ 1                              6.096    126.09393849 1                          ;
+ 2                              15.24    57.956526381 1                          ;
+ 3                              15.24    57.956526381 1                          ;
+ 4                              15.24    148.80640919 1                          ;
+ 5                             24.384    148.80640919 1                          ;
+ 6                             24.384    148.80640919 1                          ;
+ 7                             24.384    148.80640919 1                          ;
+ 8                             24.384    103.38146779 1                          ;
+ 9                             36.576    103.38146779 1                          ;
+ 10                            36.576    103.38146779 1                          ;
+ 11                            36.576    103.38146779 1                          ;
+ 12                             15.24    126.09393849 1                          ;
+ 13                             15.24    126.09393849 1                          ;
+ 14                             15.24    126.09393849 1                          ;
+ 15                             15.24    126.09393849 1                          ;
+ 16                            36.576    103.38146779 1                          ;
+ 17                            36.576    239.65629201 1                          ;
+ 18                             15.24    126.09393849 1                          ;
+ 19                             15.24    239.65629201 1                          ;
+ 20                             6.096    12.531584973 1                          ;
+ 21                             15.24    12.531584973 1                          ;
+ 22                            36.576    12.531584973 1                          ;
+=======
+ 1                              6.096    174.42683975 1                          ;
+ 2                              15.24    106.28942764 1                          ;
+ 3                              15.24    106.28942764 1                          ;
+ 4                              15.24    197.13931045 1                          ;
+ 5                             24.384    197.13931045 1                          ;
+ 6                             24.384    197.13931045 1                          ;
+ 7                             24.384    197.13931045 1                          ;
+ 8                             24.384    151.71436904 1                          ;
+ 9                             36.576    151.71436904 1                          ;
+ 10                            36.576    151.71436904 1                          ;
+ 11                            36.576    151.71436904 1                          ;
+ 12                             15.24    174.42683975 1                          ;
+ 13                             15.24    174.42683975 1                          ;
+ 14                             15.24    174.42683975 1                          ;
+ 15                             15.24    174.42683975 1                          ;
+ 16                            36.576    151.71436904 1                          ;
+ 17                            36.576    287.98919327 1                          ;
+ 18                             15.24    174.42683975 1                          ;
+ 19                             15.24    287.98919327 1                          ;
+ 20                             6.096    60.864486228 1                          ;
+ 21                             15.24    60.864486228 1                          ;
+ 22                            36.576    60.864486228 1                          ;
+ 26                             39.33     30.23561349 1                          ;
+>>>>>>> parent of 3ae9910 (Lil bit file management):Code/PPO_Optimisation_2/PPO_Training/Modified_nets/anytown_sprawling_3/Step_25.inp
+=======
+=======
+>>>>>>> Stashed changes
+=======
+>>>>>>> Stashed changes
  1                              6.096    168.67176878 1                          ;
  2                              15.24    100.53435667 1                          ;
  3                              15.24    100.53435667 1                          ;
@@ -29,6 +103,13 @@ ANYTOWN example
  21                             15.24    55.109415261 1                          ;
  22                            36.576    55.109415261 1                          ;
  26                             39.33    28.607896396 1                          ;
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
+>>>>>>> Stashed changes
+=======
+>>>>>>> Stashed changes
 
 [RESERVOIRS]
 ;ID                                   Head                  Pattern
@@ -42,6 +123,40 @@ ANYTOWN example
 [PIPES]
 ;ID                   Node1                Node2                              Length             Diameter            Roughness           Minor Loss               Status
  1                    1                    2                             3657.6           304.8             120               0                 Open   ;
+<<<<<<< HEAD:Code/temp.inp
+ 2                    1                    12                            3657.6           406.4             150               0                 Open   ;
+ 3                    1                    13                            3657.6           304.8              70               0                 Open   ;
+ 4                    1                    20                             30.48           406.4             150               0                 Open   ;
+ 5                    2                    3                             1828.8            1016             150               0                 Open   ;
+ 6                    2                    4                             2743.2             508             150               0                 Open   ;
+ 7                    2                    13                            2743.2           304.8              70               0                 Open   ;
+ 8                    2                    14                            1828.8           304.8             120               0                 Open   ;
+ 9                    3                    4                             1828.8           406.4             150               0                 Open   ;
+ 11                   4                    8                             3657.6           304.8             120               0                 Open   ;
+ 12                   4                    15                            1828.8           406.4             150               0                 Open   ;
+ 17                   8                    9                             3657.6           406.4             150               0                 Open   ;
+ 18                   8                    15                            1828.8           406.4             150               0                 Open   ;
+ 19                   8                    16                            1828.8           406.4             150               0                 Open   ;
+ 20                   8                    17                            1828.8           304.8             120               0                 Open   ;
+ 21                   9                    10                            1828.8            1016             150               0                 Open   ;
+ 22                   10                   11                            1828.8           304.8             120               0                 Open   ;
+ 23                   10                   17                            1828.8           406.4             150               0                 Open   ;
+ 24                   11                   12                            1828.8             762             150               0                 Open   ;
+ 26                   12                   17                            1828.8           406.4             150               0                 Open   ;
+ 27                   12                   18                            1828.8            1016             150               0                 Open   ;
+ 28                   13                   14                            1828.8             508             150               0                 Open   ;
+ 29                   13                   18                            1828.8           304.8              70               0                 Open   ;
+ 30                   13                   19                            1828.8             508             150               0                 Open   ;
+ 31                   14                   15                            1828.8           609.6             150               0                 Open   ;
+ 32                   14                   19                            1828.8            1016             150               0                 Open   ;
+ 33                   14                   21                             30.48           304.8             120               0                 Open   ;
+ 34                   15                   16                            1828.8           304.8              70               0                 Open   ;
+ 35                   15                   19                            1828.8            1016             150               0                 Open   ;
+ 36                   16                   17                            1828.8             508             150               0                 Open   ;
+ 37                   16                   18                            1828.8            1016             150               0                 Open   ;
+ 38                   16                   19                            1828.8           609.6             150               0                 Open   ;
+ 39                   17                   18                            1828.8           609.6             150               0                 Open   ;
+=======
  2                    1                    12                            3657.6           304.8              70               0                 Open   ;
  3                    1                    13                            3657.6           304.8              70               0                 Open   ;
  4                    1                    20                             30.48           304.8             130               0                 Open   ;
@@ -74,6 +189,7 @@ ANYTOWN example
  37                   16                   18                            1828.8           304.8              70               0                 Open   ;
  38                   16                   19                            1828.8           304.8              70               0                 Open   ;
  39                   17                   18                            1828.8           304.8             120               0                 Open   ;
+>>>>>>> parent of 3ae9910 (Lil bit file management):Code/PPO_Optimisation_2/PPO_Training/Modified_nets/anytown_sprawling_3/Step_25.inp
  40                   17                   22                             30.48           304.8             120               0                 Open   ;
  41                   18                   19                            1828.8           304.8              70               0                 Open   ;
  142                  21                   41                            0.3048           304.8             120               0                 Open   ;
@@ -84,8 +200,11 @@ ANYTOWN example
  115                  6                    8                             1828.8           304.8             130               0                 Open   ;
  116                  7                    8                             1828.8           304.8             130               0                 Open   ;
  125                  11                   17                            2743.2           304.8             130               0                 Open   ;
+<<<<<<< HEAD:Code/temp.inp
+=======
  pipe_26_11           26                   11                      1862.1481253              10              20               0                 Open   ;
  pipe_26_12           26                   12                      2512.1923144              10              20               0                 Open   ;
+>>>>>>> parent of 3ae9910 (Lil bit file management):Code/PPO_Optimisation_2/PPO_Training/Modified_nets/anytown_sprawling_3/Step_25.inp
 
 [PUMPS]
 ;ID                   Node1                Node2                Properties          
