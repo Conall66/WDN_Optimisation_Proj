@@ -881,54 +881,68 @@ if __name__ == "__main__":
     os.makedirs(save_dir, exist_ok=True)
 
     # Load the training log data
-    log_path = os.path.join(save_dir, 'training_log.csv')
-    if os.path.exists(log_path):
-        log_df = pd.read_csv(log_path)
-        print(f"Loaded training log with {len(log_df)} entries")
+    # log_path = os.path.join(save_dir, 'training_log.csv')
+    # if os.path.exists(log_path):
+    #     log_df = pd.read_csv(log_path)
+    #     print(f"Loaded training log with {len(log_df)} entries")
         
-        # Test the new plotting functions
-        fig1 = plot_action_type_frequency(log_df, model_path)
-        if fig1:
-            fig1.savefig(os.path.join(save_dir, "action_type_frequency.png"))
-            plt.close(fig1)
-            print(f"Saved action type frequency plot")
+    #     # Test the new plotting functions
+    #     fig1 = plot_action_type_frequency(log_df, model_path)
+    #     if fig1:
+    #         fig1.savefig(os.path.join(save_dir, "action_type_frequency.png"))
+    #         plt.close(fig1)
+    #         print(f"Saved action type frequency plot")
         
-        fig2 = plot_cumulative_pipe_changes(log_df, model_path)
-        if fig2:
-            fig2.savefig(os.path.join(save_dir, "cumulative_pipe_changes.png"))
-            plt.close(fig2)
-            print(f"Saved cumulative pipe changes plot")
+    #     fig2 = plot_cumulative_pipe_changes(log_df, model_path)
+    #     if fig2:
+    #         fig2.savefig(os.path.join(save_dir, "cumulative_pipe_changes.png"))
+    #         plt.close(fig2)
+    #         print(f"Saved cumulative pipe changes plot")
             
-        # Test the pipe upgrade frequency plots
-        fig3 = plot_pipe_upgrade_frequency_over_time(log_df, model_path)
-        if fig3:
-            fig3.savefig(os.path.join(save_dir, "pipe_upgrade_frequency.png"))
-            plt.close(fig3)
-            print(f"Saved pipe upgrade frequency plot")
+    #     # Test the pipe upgrade frequency plots
+    #     fig3 = plot_pipe_upgrade_frequency_over_time(log_df, model_path)
+    #     if fig3:
+    #         fig3.savefig(os.path.join(save_dir, "pipe_upgrade_frequency.png"))
+    #         plt.close(fig3)
+    #         print(f"Saved pipe upgrade frequency plot")
         
-        # Generate episode data for one representative scenario for pipe-specific plots
-        print(f"Generating episode data for {target_scenario}...")
-        episode_df = generate_episode_data_for_viz(model_path, env_configs, target_scenario)
+    #     # Generate episode data for one representative scenario for pipe-specific plots
+    #     print(f"Generating episode data for {target_scenario}...")
+    #     episode_df = generate_episode_data_for_viz(model_path, env_configs, target_scenario)
         
-        if not episode_df.empty:
-            fig4 = plot_pipe_specific_upgrade_frequency(log_df, episode_df, model_path)
-            if fig4:
-                fig4.savefig(os.path.join(save_dir, "pipe_specific_upgrade_frequency.png"))
-                plt.close(fig4)
-                print(f"Saved pipe-specific upgrade frequency plot")
-    else:
-        print(f"Training log file not found: {log_path}")
+    #     if not episode_df.empty:
+    #         fig4 = plot_pipe_specific_upgrade_frequency(log_df, episode_df, model_path)
+    #         if fig4:
+    #             fig4.savefig(os.path.join(save_dir, "pipe_specific_upgrade_frequency.png"))
+    #             plt.close(fig4)
+    #             print(f"Saved pipe-specific upgrade frequency plot")
+
+    #     # Plot the training diagnostics
+    #     fig5 = plot_training_diagnostics(log_df, model_path)
+    #     if fig5:
+    #         fig5.savefig(os.path.join(save_dir, "training_diagnostics.png"))
+    #         plt.close(fig5)
+    #         print(f"Saved training diagnostics plot")
+    #     # Plot the reward composition
+    #     fig6 = plot_reward_composition(log_df, model_path)
+    #     if fig6:
+    #         fig6.savefig(os.path.join(save_dir, "reward_composition.png"))
+    #         plt.close(fig6)
+    #         print(f"Saved reward composition plot")
+
+    # else:
+    #     print(f"Training log file not found: {log_path}")
 
     # Call the modified heatmap function
-    # fig = plot_pipe_diameters_heatmap_over_time(
-    #     model_path=model_path,
-    #     pipes_config=env_configs['pipes_config'],
-    #     scenarios_list=env_configs['scenarios'],
-    #     target_scenario_name=target_scenario,
-    #     budget_config=env_configs['budget_config'],
-    #     reward_config=env_configs['reward_config'],
-    #     network_config=env_configs['network_config'],
-    #     save_dir=save_dir
-    # )
+    fig = plot_pipe_diameters_heatmap_over_time(
+        model_path=model_path,
+        pipes_config=env_configs['pipes_config'],
+        scenarios_list=env_configs['scenarios'],
+        target_scenario_name=target_scenario,
+        budget_config=env_configs['budget_config'],
+        reward_config=env_configs['reward_config'],
+        network_config=env_configs['network_config'],
+        save_dir=save_dir
+    )
     
     # plt.show() # Display the plot

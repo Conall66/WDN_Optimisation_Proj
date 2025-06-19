@@ -75,8 +75,8 @@ REWARD_CONFIG = {
 
 # Budget configurations tailored for different network scales
 BUDGET_CONFIG_HANOI = {
-    "initial_budget_per_step": 500_000.0,
-    "start_of_episode_budget": 10_000_000.0,
+    "initial_budget_per_step": 200_000.0,
+    "start_of_episode_budget": 5_000_000.0,
     "ongoing_debt_penalty_factor": 0.0001,
     "max_debt": 1_000_000.0,
     "labour_cost_per_meter": 100.0
@@ -130,7 +130,7 @@ def evaluate_policy(model_path: str, eval_env_configs: dict, num_episodes: int =
         if not is_random:
             # The environment passed during agent creation is temporary; it gets replaced by vec_env when loading.
             agent = GraphPPOAgent(vec_env, pipes_config=PIPES_CONFIG, **PPO_CONFIG)
-            agent.load(model_path, env=vec_env) # Pass the vec_env here to link them
+            agent.load(model_path) # Pass the vec_env here to link them
         
         episode_rewards = []
         for _ in range(num_episodes):
@@ -437,33 +437,33 @@ if __name__ == "__main__":
     anytown_scenarios = [s for s in ALL_SCENARIOS if 'anytown' in s]
     hanoi_scenarios = [s for s in ALL_SCENARIOS if 'hanoi' in s]
 
-    # trained_model_path = "agents/Anytown_Only_20250618_063339"  
+    # trained_model_path = "agents/Hanoi_Only_20250618_211050"  
     
-    # # Define which scenarios to evaluate on
-    # test_scenarios = anytown_scenarios  # or hanoi_scenarios or ALL_SCENARIOS
+    # # # Define which scenarios to evaluate on
+    # test_scenarios = hanoi_scenarios  # or hanoi_scenarios or ALL_SCENARIOS
     
-    # # Test just the evaluation and plotting parts
-    # test_evaluation_and_plotting(trained_model_path, test_scenarios, BUDGET_CONFIG_ANYTOWN)
+    # # # Test just the evaluation and plotting parts
+    # test_evaluation_and_plotting(trained_model_path, test_scenarios, BUDGET_CONFIG_HANOI)
 
     # --- Run Experiment 1: Train on Hanoi network ---
     # Hanoi is smaller and trains faster, good for a first run.
-    # hanoi_model_path = run_training_experiment(
-    #     training_label="Hanoi_Only",
-    #     scenarios=hanoi_scenarios,
-    #     budget_config=BUDGET_CONFIG_HANOI,
-    #     total_timesteps=50_000,
-    #     use_subproc_env=False
-    # )
-
-    # --- Run Experiment 2: Train on Anytown network ---
-    # Anytown is larger and more complex.
-    anytown_model_path = run_training_experiment(
-        training_label="Anytown_Only",
-        scenarios=anytown_scenarios,
-        budget_config=BUDGET_CONFIG_ANYTOWN,
+    hanoi_model_path = run_training_experiment(
+        training_label="Hanoi_Only",
+        scenarios=hanoi_scenarios,
+        budget_config=BUDGET_CONFIG_HANOI,
         total_timesteps=50_000,
         use_subproc_env=False
     )
+
+    # --- Run Experiment 2: Train on Anytown network ---
+    # Anytown is larger and more complex.
+    # anytown_model_path = run_training_experiment(
+    #     training_label="Anytown_Only",
+    #     scenarios=anytown_scenarios,
+    #     budget_config=BUDGET_CONFIG_ANYTOWN,
+    #     total_timesteps=50_000,
+    #     use_subproc_env=False
+    # )
     
     # --- Optional Experiment 3: Fine-tune the Hanoi model on Anytown scenarios ---
     # This demonstrates transfer learning. Uncomment to run.

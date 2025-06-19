@@ -409,10 +409,14 @@ class GraphPPOAgent:
         """Train the agent"""
         self.agent.learn(total_timesteps=total_timesteps, callback = callback)
     
-    def predict(self, observation, deterministic: bool = True):
-        """Make prediction"""
-        action = self.agent.predict(observation, deterministic=deterministic)
-        # print(f"Predicted action: {action}")
+    def predict(self, observation, deterministic: bool = True, **kwargs):
+        """
+        Make prediction.
+        This now accepts and passes through extra keyword arguments (like action_masks)
+        to the underlying agent's predict method.
+        """
+        # The **kwargs will unpack any additional arguments, such as action_masks=...
+        action = self.agent.predict(observation, deterministic=deterministic, **kwargs)
         return action
     
     def save(self, path: str):

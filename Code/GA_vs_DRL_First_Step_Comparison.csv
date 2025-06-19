@@ -1,0 +1,7 @@
+Scenario,GA_Reward,DRL_Reward
+anytown_densifying_1,0.6,0.6
+anytown_densifying_2,0.6,0.6
+anytown_densifying_3,0.6,0.26262235367199643
+anytown_sprawling_1,0.6,0.5144093344705096
+anytown_sprawling_2,0.6,0.51428690343272
+anytown_sprawling_3,0.6,0.26068712309780456
